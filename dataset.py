@@ -1,7 +1,19 @@
 import h5py
-from typing import Dict
+import torch
+import torch.nn as nn
+from typing import Any, Dict, List
+from dataclasses import dataclass
+import torch.nn.functional as F
 from torch.utils.data import Dataset
-from transformers import PreTrainedTokenizerFast, BatchEncoding
+from transformers import (
+    PreTrainedTokenizerFast,
+    BatchEncoding,
+    DataCollatorForLanguageModeling,
+    Trainer,
+    TrainingArguments,
+    EsmForMaskedLM,
+)
+from transformers.models.esm.modeling_esm import EsmLMHead
 
 # Stop codons map to empty strings ""
 translation_table = {
@@ -144,3 +156,188 @@ class HDF5Dataset(Dataset):
             data["aminoacid"] = self.tokenize(amino_acid_sequence)
 
         return data
+
+
+class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
+    """Augment the underlying DataCollatorForLanguageModeling to handle
+    multiple batch encoding inputs."""
+
+    def __init__(
+        self, return_codon: bool = True, return_aminoacid: bool = False, *args, **kwargs
+    ):
+        self.return_codon = return_codon
+        self.return_aminoacid = return_aminoacid
+        super().__init__(*args, **kwargs)
+
+    def torch_call(self, examples: List[Dict[str, BatchEncoding]]) -> Dict[str, Any]:
+        batch = {}
+        if self.return_codon:
+            batch["codon"] = super().torch_call([e["codon"] for e in examples])
+        if self.return_aminoacid:
+            batch["aminoacid"] = super().torch_call([e["aminoacid"] for e in examples])
+        return batch
+
+
+class ContrastiveLoss(nn.Module):
+    def __init__(self, temperature: float, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.temperature = temperature
+
+    def forward(self, z_codon, z_aminoacid):
+        # NOTE: z_codon.shape == (batch_size, embedding_size)
+        # NOTE: z_aminoacid.shape == (batch_size, embedding_size)
+
+        # TODO: This implementation could have bugs
+
+        # Calculate cosine similarity
+        cos_sim = F.cosine_similarity(z_codon, z_aminoacid, dim=-1)
+        # InfoNCE loss
+        cos_sim = cos_sim / self.temperature
+        nll = -torch.logsumexp(cos_sim, dim=-1)
+        nll = nll.mean()
+        return nll
+
+
+class ContrastiveProjectionHead(nn.Module):
+    def __init__(
+        self,
+        embedding_size: int,
+        projection_size: int,
+        temperature: float = 0.1,
+    ) -> None:
+        super().__init__()
+        self.projection = nn.Linear(embedding_size, projection_size)
+        self.loss_fn = ContrastiveLoss(temperature=temperature)
+
+    def compute_loss(self, z_codon, z_aminoacid):
+        # Project the embeddings into a lower dimensional space
+        codon_proj = self(z_codon)
+        aminoacid_proj = self(z_aminoacid)
+
+        # Compute the contrastive loss following SimCLR
+        return self.loss_fn(codon_proj, aminoacid_proj)
+
+    def forward(self, x):
+        return self.projection(F.relu(x, inplace=True))
+
+
+# DEV NOTE: This is a hacky way to inject the contrastive loss into the Trainer
+# (explicit coupling between Trainer and model.contrastive_head)
+class GenSLMTrainer(Trainer):
+    def __init__(
+        self,
+        compute_codon_loss: bool = True,
+        compute_aminoacid_loss: bool = False,
+        compute_contrastive_loss: bool = False,
+        **kwargs
+    ):
+        self.compute_codon_loss = compute_codon_loss
+        self.compute_aminoacid_loss = compute_aminoacid_loss
+        self.compute_contrastive_loss = compute_contrastive_loss
+
+        if self.compute_contrastive_loss:
+            if not (self.compute_codon_loss and self.compute_aminoacid_loss):
+                raise ValueError(
+                    "Contrastive loss requires both codon and aminoacid loss"
+                )
+
+        super().__init__(**kwargs)
+
+    def compute_llm_loss(self, model, inputs):
+        if self.compute_contrastive_loss:
+            loss, outputs = super().compute_loss(model, inputs, return_outputs=True)
+        else:
+            loss = super().compute_loss(model, inputs, return_outputs=False)
+            outputs = None
+
+        return loss, outputs
+
+    def compute_loss(self, model, inputs, return_outputs=False):
+        """
+        How the loss is computed by Trainer. By default, all models return the loss in the first element.
+
+        Subclass and override for custom behavior.
+        """
+        loss = 0.0
+        if self.compute_codon_loss:
+            codon_loss, codon_outputs = self.compute_llm_loss(model, inputs["codon"])
+            loss += codon_loss
+        if self.compute_aminoacid_loss:
+            aminoacid_loss, aminoacid_outputs = self.compute_llm_loss(
+                model, inputs["aminoacid"]
+            )
+            loss += aminoacid_loss
+        if self.compute_contrastive_loss:
+            # The average over sequence length gives even weighting to each sequence position
+            codon_avg_embed = codon_outputs["last_hidden_state"].mean(dim=1)
+            aminoacid_avg_embed = aminoacid_outputs["last_hidden_state"].mean(dim=1)
+
+            # Compute the contrastive loss following SimCLR
+            contrastive_loss = model.contrastive_head.compute_loss(
+                codon_avg_embed, aminoacid_avg_embed
+            )
+            loss += contrastive_loss
+        return loss
+
+
+@dataclass
+class GenSLMTrainingArguments:
+    compute_codon_loss: bool = True
+    compute_aminoacid_loss: bool = False
+    compute_contrastive_loss: bool = False
+    temperature: float = 0.1
+    esm_base_model: str = "facebook/esm2_t6_8M_UR50D"
+    tokenizer_path: str = "tokenizer_path"
+
+
+# TODO: Make script to output tokenizer files
+# TODO: In the collator, just pack the codon and aminacid sequences
+#       into the same batch. This is more efficient than the current
+#       implementation which creates a batch for each sequence type.
+#       This will require some changes to the Trainer class in how
+#       the loss is computed. This will also allow us to use the
+#       more standed SimCLR loss which assumes the positive and negative
+#       pairs are in the same batch. Note, the effective batch size
+#       will be twice as large.
+
+
+def main():
+    args = TrainingArguments(
+        output_dir="output_path",
+        remove_unused_columns=False,  # This skips underlying logic in Trainer which modifies the data_collator
+        dataloader_num_workers=0,  # Defaults to 0, may want to increase for faster data loading
+    )
+
+    tokenizer = PreTrainedTokenizerFast.from_pretrained("tokenizer_path")
+
+    model = EsmForMaskedLM.from_pretrained("facebook/esm2_t6_8M_UR50D")
+
+    # Inject new vocabulary (modifies model.config)
+    model.resize_token_embeddings(len(tokenizer))
+    # Make a new lm_head with uninitialized weights using the correct shape
+    model.lm_head = EsmLMHead(model.config)
+
+    # Inject a contrastive projection head if needed
+    if compute_contrastive_loss:
+        model.contrastive_head = ContrastiveProjectionHead(
+            embedding_size=model.config.hidden_size,
+            projection_size=model.config.hidden_size // 4,
+        )
+
+    train_dataset = HDF5Dataset(
+        "data_path.h5", tokenizer, return_codon=True, return_aminoacid=False
+    )
+
+    data_collator = GenSLMColatorForLanguageModeling(
+        tokenizer, mlm=True, mlm_probability=0.15
+    )
+
+    trainer = Trainer(
+        model=model, args=args, data_collator=data_collator, train_dataset=train_dataset
+    )
+
+    trainer.train()
+
+
+if __name__ == "__main__":
+    main()
