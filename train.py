@@ -92,7 +92,7 @@ def group_codons(seq: str) -> str:
 
 
 def codon_seq_to_amino_acid(codon_seq: str) -> str:
-    return "".join(translation_table[codon] for codon in codon_seq)
+    return "".join(translation_table[codon] for codon in codon_seq.split())
 
 
 class FastaDataset(Dataset):
@@ -112,7 +112,8 @@ class FastaDataset(Dataset):
         # Read the fasta file
         dna_sequenes = self.read_fasta_only_seq(file_path)
         # Preprocess the sequences into codons
-        self.sequences = [group_codons(seq) for seq in dna_sequenes]
+        self.sequences = [group_codons(seq) for seq in dna_sequenes if
+                len(seq) % 3 == 0]
 
     def read_fasta_only_seq(self, fasta_file: str) -> List[str]:
         """Reads fasta file sequences without description tag."""
@@ -260,9 +261,11 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
         if self.return_codon and self.return_aminoacid:
             # The first half of the batch is the codon sequences
             # and the second half is the amino acid sequences
-            return super().torch_call(
-                [e["codon"] for e in examples] + [e["aminoacid"] for e in examples]
-            )
+            tokenized_seqs = self.tokenize([e["codon"] for e in examples] + [e["aminoacid"] for e in examples])
+            return self.torch_call_helper(tokenized_seqs)
+            #return super().torch_call(
+            #    [e["codon"] for e in examples] + [e["aminoacid"] for e in examples]
+            #)
         elif self.return_codon:
             #print(examples)
             #print(type(examples))
@@ -275,7 +278,9 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
             return self.torch_call_helper(tokenized_seqs)
             #return super().torch_call(self.tokenize([e["codon"] for e in examples]))
         elif self.return_aminoacid:
-            return super().torch_call([e["aminoacid"] for e in examples])
+            tokenized_seqs = self.tokenize([e["aminoacid"] for e in examples])
+            return self.torch_call_helper(tokenized_seqs)
+            #return super().torch_call([e["aminoacid"] for e in examples])
         assert False
 
 
@@ -350,6 +355,7 @@ class GenSLMTrainer(Trainer):
         """
         if self.compute_contrastive_loss:
             loss, outputs = super().compute_loss(model, inputs, return_outputs=True)
+            print(outputs.keys())
             # The average over sequence length gives even weighting to each sequence position
             avg_embed = outputs["last_hidden_state"].mean(dim=1)
             # avg_embed: (batch_size, embedding_size)
@@ -365,8 +371,8 @@ class GenSLMTrainer(Trainer):
 @dataclass
 class GenSLMTrainingConfig:
     compute_codon_loss: bool = True
-    compute_aminoacid_loss: bool = False
-    compute_contrastive_loss: bool = False
+    compute_aminoacid_loss: bool = True
+    compute_contrastive_loss: bool = True
     temperature: float = 0.1
     max_length: int = 1024
     base_model: str = "facebook/esm2_t6_8M_UR50D"
@@ -388,7 +394,7 @@ def main():
 
     args = TrainingArguments(
         output_dir=config.output_path,
-        per_device_train_batch_size=128,
+        per_device_train_batch_size=64,
         #per_device_eval_batch_size=128,
         #evaluation_strategy="steps",
         # eval_steps=50,
