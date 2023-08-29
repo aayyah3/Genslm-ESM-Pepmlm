@@ -14,6 +14,7 @@ from transformers import (
     Trainer,
     TrainingArguments,
     EsmForMaskedLM,
+    EsmTokenizer,
 )
 from transformers.models.esm.modeling_esm import EsmLMHead
 
@@ -367,7 +368,8 @@ def main():
         dataloader_num_workers=0,  # Defaults to 0, may want to increase for faster data loading
     )
 
-    tokenizer = PreTrainedTokenizerFast.from_pretrained(config.tokenizer_path)
+    # tokenizer = PreTrainedTokenizerFast.from_pretrained(config.tokenizer_path)
+    tokenizer = EsmTokenizer.from_pretrained(config.tokenizer_path)
 
     model = EsmForMaskedLM.from_pretrained(config.base_model)
 
