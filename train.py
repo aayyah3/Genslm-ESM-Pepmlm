@@ -112,7 +112,7 @@ class FastaDataset(Dataset):
         # Read the fasta file
         dna_sequenes = self.read_fasta_only_seq(file_path)
         # Preprocess the sequences into codons
-        self.sequenes = [group_codons(seq) for seq in dna_sequenes]
+        self.sequences = [group_codons(seq) for seq in dna_sequenes]
 
     def read_fasta_only_seq(self, fasta_file: str) -> List[str]:
         """Reads fasta file sequences without description tag."""
@@ -133,6 +133,7 @@ class FastaDataset(Dataset):
             truncation=True,
             padding="max_length",
             max_length=self.max_length,
+            return_special_tokens_mask=True
         )
 
     def __len__(self) -> int:
@@ -147,12 +148,12 @@ class FastaDataset(Dataset):
 
         # Tokenize the codon sequence
         if self.return_codon:
-            data["codon"] = self.tokenize(codon_sequence)
+            data["codon"] = codon_sequence #self.tokenize(codon_sequence)
 
         # Tokenize the amino acid sequence
         if self.return_aminoacid:
             amino_acid_sequence = codon_seq_to_amino_acid(codon_sequence)
-            data["aminoacid"] = self.tokenize(amino_acid_sequence)
+            data["aminoacid"] = amino_acid_sequence #self.tokenize(amino_acid_sequence)
 
         return data
 
@@ -229,6 +230,15 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
         self.return_aminoacid = return_aminoacid
         super().__init__(**kwargs)
 
+    def tokenize(self, sequence: str) -> BatchEncoding:
+        return self.tokenizer(
+            sequence,
+            return_tensors="pt",
+            truncation=True,
+            padding="max_length",
+            max_length=1024#self.max_length,
+        )
+
     def torch_call(self, examples: List[Dict[str, BatchEncoding]]) -> Dict[str, Any]:
         if self.return_codon and self.return_aminoacid:
             # The first half of the batch is the codon sequences
@@ -237,7 +247,15 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
                 [e["codon"] for e in examples] + [e["aminoacid"] for e in examples]
             )
         elif self.return_codon:
-            return super().torch_call([e["codon"] for e in examples])
+            print(examples)
+            print(type(examples))
+            print(examples[0])
+            print(type(examples[0]))
+            tokenized_seqs = self.tokenize([e["codon"] for e in examples])
+            print(tokenized_seqs)
+            print(tokenized_seqs.keys())
+            print(tokenized_seqs["input_ids"].shape)
+            return super().torch_call(self.tokenize([e["codon"] for e in examples]))
         elif self.return_aminoacid:
             return super().torch_call([e["aminoacid"] for e in examples])
         assert False
@@ -320,7 +338,9 @@ class GenSLMTrainer(Trainer):
             # Compute the contrastive loss following SimCLR
             loss += model.contrastive_head(avg_embed)
             return (loss, outputs) if return_outputs else loss
-
+        print(f"{type(inputs)=}")
+        print(f"{inputs.keys()}")
+        print(f"{inputs['input_ids'].shape=}")
         return super().compute_loss(model, inputs, return_outputs=return_outputs)
 
 
@@ -333,8 +353,8 @@ class GenSLMTrainingConfig:
     max_length: int = 1024
     base_model: str = "facebook/esm2_t6_8M_UR50D"
     tokenizer_path: str = "tokenizer_esm_genslm"
-    output_path: str = "output_path"
-    data_path: str = "data_path.h5"
+    output_path: str = "mdh_natural_sequences_run_1"
+    data_path: str = "/lambda_stor/homes/khippe/genslm_foundation/genome_data/mdh_sc23/fasta/mdh_natural_sequences.ffn"
 
     def __post_init__(self):
         if self.compute_contrastive_loss:
@@ -350,13 +370,13 @@ def main():
 
     args = TrainingArguments(
         output_dir=config.output_path,
-        per_device_train_batch_size=64,
+        per_device_train_batch_size=32,
         per_device_eval_batch_size=128,
         evaluation_strategy="steps",
-        eval_steps=50,
+        #eval_steps=50,
         logging_steps=25,
         gradient_accumulation_steps=2,
-        num_train_epochs=10,
+        num_train_epochs=1,
         weight_decay=0.1,
         warmup_steps=1_000,
         lr_scheduler_type="cosine",
