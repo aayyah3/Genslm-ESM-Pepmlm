@@ -133,7 +133,7 @@ class FastaDataset(Dataset):
             truncation=True,
             padding="max_length",
             max_length=self.max_length,
-            return_special_tokens_mask=True
+            return_special_tokens_mask=True,
         )
 
     def __len__(self) -> int:
@@ -148,12 +148,14 @@ class FastaDataset(Dataset):
 
         # Tokenize the codon sequence
         if self.return_codon:
-            data["codon"] = codon_sequence #self.tokenize(codon_sequence)
+            data["codon"] = codon_sequence  # self.tokenize(codon_sequence)
 
         # Tokenize the amino acid sequence
         if self.return_aminoacid:
             amino_acid_sequence = codon_seq_to_amino_acid(codon_sequence)
-            data["aminoacid"] = amino_acid_sequence #self.tokenize(amino_acid_sequence)
+            data[
+                "aminoacid"
+            ] = amino_acid_sequence  # self.tokenize(amino_acid_sequence)
 
         return data
 
@@ -230,14 +232,28 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
         self.return_aminoacid = return_aminoacid
         super().__init__(**kwargs)
 
-    def tokenize(self, sequence: str) -> BatchEncoding:
+    def tokenize(self, sequences: List[str]) -> BatchEncoding:
         return self.tokenizer(
-            sequence,
+            sequences,
             return_tensors="pt",
             truncation=True,
             padding="max_length",
-            max_length=1024#self.max_length,
+            max_length=max(sequences),  # self.max_length,
         )
+
+    def torch_call_helper(self, batch: BatchEncoding) -> BatchEncoding:
+        # If special token mask has been preprocessed, pop it from the dict.
+        special_tokens_mask = batch.pop("special_tokens_mask", None)
+        if self.mlm:
+            batch["input_ids"], batch["labels"] = self.torch_mask_tokens(
+                batch["input_ids"], special_tokens_mask=special_tokens_mask
+            )
+        else:
+            labels = batch["input_ids"].clone()
+            if self.tokenizer.pad_token_id is not None:
+                labels[labels == self.tokenizer.pad_token_id] = -100
+            batch["labels"] = labels
+        return batch
 
     def torch_call(self, examples: List[Dict[str, BatchEncoding]]) -> Dict[str, Any]:
         if self.return_codon and self.return_aminoacid:
@@ -255,6 +271,7 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
             print(tokenized_seqs)
             print(tokenized_seqs.keys())
             print(tokenized_seqs["input_ids"].shape)
+            return self.torch_call_helper(tokenized_seqs)
             return super().torch_call(self.tokenize([e["codon"] for e in examples]))
         elif self.return_aminoacid:
             return super().torch_call([e["aminoacid"] for e in examples])
@@ -373,7 +390,7 @@ def main():
         per_device_train_batch_size=32,
         per_device_eval_batch_size=128,
         evaluation_strategy="steps",
-        #eval_steps=50,
+        # eval_steps=50,
         logging_steps=25,
         gradient_accumulation_steps=2,
         num_train_epochs=1,
