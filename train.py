@@ -237,8 +237,8 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
             sequences,
             return_tensors="pt",
             truncation=True,
-            padding="max_length",
-            max_length=max(sequences),  # self.max_length,
+            padding=True, #"max_length",
+            #max_length=max(sequences),  # self.max_length,
             return_special_tokens_mask=True,
         )
 
@@ -264,16 +264,16 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
                 [e["codon"] for e in examples] + [e["aminoacid"] for e in examples]
             )
         elif self.return_codon:
-            print(examples)
-            print(type(examples))
-            print(examples[0])
-            print(type(examples[0]))
+            #print(examples)
+            #print(type(examples))
+            #print(examples[0])
+            #print(type(examples[0]))
             tokenized_seqs = self.tokenize([e["codon"] for e in examples])
-            print(tokenized_seqs)
-            print(tokenized_seqs.keys())
-            print(tokenized_seqs["input_ids"].shape)
+            #print(tokenized_seqs)
+            #print(tokenized_seqs.keys())
+            #print(tokenized_seqs["input_ids"].shape)
             return self.torch_call_helper(tokenized_seqs)
-            return super().torch_call(self.tokenize([e["codon"] for e in examples]))
+            #return super().torch_call(self.tokenize([e["codon"] for e in examples]))
         elif self.return_aminoacid:
             return super().torch_call([e["aminoacid"] for e in examples])
         assert False
@@ -356,9 +356,9 @@ class GenSLMTrainer(Trainer):
             # Compute the contrastive loss following SimCLR
             loss += model.contrastive_head(avg_embed)
             return (loss, outputs) if return_outputs else loss
-        print(f"{type(inputs)=}")
-        print(f"{inputs.keys()}")
-        print(f"{inputs['input_ids'].shape=}")
+        #print(f"{type(inputs)=}")
+        #print(f"{inputs.keys()}")
+        #print(f"{inputs['input_ids'].shape=}")
         return super().compute_loss(model, inputs, return_outputs=return_outputs)
 
 
@@ -388,9 +388,9 @@ def main():
 
     args = TrainingArguments(
         output_dir=config.output_path,
-        per_device_train_batch_size=32,
-        per_device_eval_batch_size=128,
-        evaluation_strategy="steps",
+        per_device_train_batch_size=128,
+        #per_device_eval_batch_size=128,
+        #evaluation_strategy="steps",
         # eval_steps=50,
         logging_steps=25,
         gradient_accumulation_steps=2,
@@ -403,7 +403,7 @@ def main():
         fp16=True,
         push_to_hub=False,
         remove_unused_columns=False,  # This skips underlying logic in Trainer which modifies the data_collator
-        dataloader_num_workers=0,  # Defaults to 0, may want to increase for faster data loading
+        dataloader_num_workers=4,  # Defaults to 0, may want to increase for faster data loading
     )
 
     # tokenizer = PreTrainedTokenizerFast.from_pretrained(config.tokenizer_path)
