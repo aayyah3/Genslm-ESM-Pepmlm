@@ -1,6 +1,7 @@
 import h5py
 import torch
 import torch.nn as nn
+from pathlib import Path
 from typing import Any, Dict, List
 from dataclasses import dataclass
 import torch.nn.functional as F
@@ -90,6 +91,67 @@ def group_codons(seq: str) -> str:
 
 def codon_seq_to_amino_acid(codon_seq: str) -> str:
     return "".join(translation_table[codon] for codon in codon_seq)
+
+class FastaDataset(Dataset):
+       def __init__(
+        self,
+        file_path: str,
+        tokenizer: PreTrainedTokenizerFast,
+        max_length: int = 1024,
+        return_codon: bool = True,
+        return_aminoacid: bool = False,
+    ) -> None:
+        self.tokenizer = tokenizer
+        self.max_length = max_length
+        self.return_codon = return_codon
+        self.return_aminoacid = return_aminoacid
+
+        # Read the fasta file
+        dna_sequenes = self.read_fasta_only_seq(file_path)
+        # Preprocess the sequences into codons
+        self.sequenes = [group_codons(seq) for seq in dna_sequenes]
+
+    def read_fasta_only_seq(self, fasta_file: str) -> List[str]:
+        """Reads fasta file sequences without description tag."""
+        text = Path(fasta_file).read_text()
+        pattern = re.compile("^>", re.MULTILINE)
+        non_parsed_seqs = re.split(pattern, text)[1:]
+        lines = [
+            line.replace("\n", "") for seq in non_parsed_seqs for line in seq.split("\n", 1)
+        ]
+        return lines[1::2]
+
+    def tokenize(self, sequence: str) -> BatchEncoding:
+        return self.tokenizer(
+            sequence,
+            return_tensors="pt",
+            truncation=True,
+            padding="max_length",
+            max_length=self.max_length,
+        )
+
+    def __len__(self) -> int:
+        return len(self.sequences)
+
+    def __getitem__(self, idx: int) -> Dict[str, BatchEncoding]:
+        # Get the idx'th codon sequence
+        codon_sequence = self.sequences[idx]
+
+        # The output data dictionary to be returned
+        data = {}
+
+        # Tokenize the codon sequence
+        if self.return_codon:
+            data["codon"] = self.tokenize(codon_sequence)
+
+        # Tokenize the amino acid sequence
+        if self.return_aminoacid:
+            amino_acid_sequence = codon_seq_to_amino_acid(codon_sequence)
+            data["aminoacid"] = self.tokenize(amino_acid_sequence)
+
+        return data
+
+
 
 
 class HDF5Dataset(Dataset):
@@ -265,6 +327,7 @@ class GenSLMTrainingConfig:
     compute_aminoacid_loss: bool = False
     compute_contrastive_loss: bool = False
     temperature: float = 0.1
+    max_length: int = 1024
     base_model: str = "facebook/esm2_t6_8M_UR50D"
     tokenizer_path: str = "tokenizer_esm_genslm"
     output_path: str = "output_path"
@@ -318,9 +381,12 @@ def main():
             projection_size=model.config.hidden_size // 4,
         )
 
-    train_dataset = HDF5Dataset(
+    # Select the dataset type based on the file extension
+    dset_class = HDF5Dataset if config.data_path.endswith(".h5") else FastaDataset
+    train_dataset = dset_class(
         file_path=config.data_path,
         tokenizer=tokenizer,
+        max_length=config.max_length,
         return_codon=config.compute_codon_loss,
         return_aminoacid=config.compute_aminoacid_loss,
     )
