@@ -1,3 +1,4 @@
+import re
 import h5py
 import torch
 import torch.nn as nn
@@ -92,8 +93,9 @@ def group_codons(seq: str) -> str:
 def codon_seq_to_amino_acid(codon_seq: str) -> str:
     return "".join(translation_table[codon] for codon in codon_seq)
 
+
 class FastaDataset(Dataset):
-       def __init__(
+    def __init__(
         self,
         file_path: str,
         tokenizer: PreTrainedTokenizerFast,
@@ -117,7 +119,9 @@ class FastaDataset(Dataset):
         pattern = re.compile("^>", re.MULTILINE)
         non_parsed_seqs = re.split(pattern, text)[1:]
         lines = [
-            line.replace("\n", "") for seq in non_parsed_seqs for line in seq.split("\n", 1)
+            line.replace("\n", "")
+            for seq in non_parsed_seqs
+            for line in seq.split("\n", 1)
         ]
         return lines[1::2]
 
@@ -150,8 +154,6 @@ class FastaDataset(Dataset):
             data["aminoacid"] = self.tokenize(amino_acid_sequence)
 
         return data
-
-
 
 
 class HDF5Dataset(Dataset):
