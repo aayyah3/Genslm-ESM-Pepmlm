@@ -115,7 +115,6 @@ class HDF5Dataset(Dataset):
             self.len = f["input_ids"].shape[0]
 
     def _init_h5(self) -> None:
-        """Open the HDF5 file in the dataloader worker process."""
         if self.h5_file is None:
             self.h5_file = h5py.File(self.file_path, "r")
 
@@ -132,6 +131,7 @@ class HDF5Dataset(Dataset):
         return self.len
 
     def __getitem__(self, idx: int) -> Dict[str, BatchEncoding]:
+        # Open the HDF5 file in the dataloader worker process
         self._init_h5()
 
         # Load the sequence from the HDF5 file
