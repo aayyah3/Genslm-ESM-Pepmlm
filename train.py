@@ -239,6 +239,7 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
             truncation=True,
             padding="max_length",
             max_length=max(sequences),  # self.max_length,
+            return_special_tokens_mask=True,
         )
 
     def torch_call_helper(self, batch: BatchEncoding) -> BatchEncoding:
