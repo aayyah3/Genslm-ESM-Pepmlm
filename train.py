@@ -112,8 +112,9 @@ class FastaDataset(Dataset):
         # Read the fasta file
         dna_sequenes = self.read_fasta_only_seq(file_path)
         # Preprocess the sequences into codons
-        self.sequences = [group_codons(seq) for seq in dna_sequenes if
-                len(seq) % 3 == 0]
+        self.sequences = [
+            group_codons(seq) for seq in dna_sequenes if len(seq) % 3 == 0
+        ]
 
     def read_fasta_only_seq(self, fasta_file: str) -> List[str]:
         """Reads fasta file sequences without description tag."""
@@ -238,8 +239,8 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
             sequences,
             return_tensors="pt",
             truncation=True,
-            padding=True, #"max_length",
-            #max_length=max(sequences),  # self.max_length,
+            padding=True,  # "max_length",
+            # max_length=max(sequences),  # self.max_length,
             return_special_tokens_mask=True,
         )
 
@@ -261,26 +262,49 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
         if self.return_codon and self.return_aminoacid:
             # The first half of the batch is the codon sequences
             # and the second half is the amino acid sequences
-            tokenized_seqs = self.tokenize([e["codon"] for e in examples] + [e["aminoacid"] for e in examples])
+            tokenized_seqs = self.tokenize(
+                [e["codon"] for e in examples] + [e["aminoacid"] for e in examples]
+            )
             return self.torch_call_helper(tokenized_seqs)
-            #return super().torch_call(
-            #    [e["codon"] for e in examples] + [e["aminoacid"] for e in examples]
-            #)
         elif self.return_codon:
-            #print(examples)
-            #print(type(examples))
-            #print(examples[0])
-            #print(type(examples[0]))
             tokenized_seqs = self.tokenize([e["codon"] for e in examples])
-            #print(tokenized_seqs)
-            #print(tokenized_seqs.keys())
-            #print(tokenized_seqs["input_ids"].shape)
             return self.torch_call_helper(tokenized_seqs)
-            #return super().torch_call(self.tokenize([e["codon"] for e in examples]))
         elif self.return_aminoacid:
             tokenized_seqs = self.tokenize([e["aminoacid"] for e in examples])
             return self.torch_call_helper(tokenized_seqs)
-            #return super().torch_call([e["aminoacid"] for e in examples])
+        assert False
+
+
+class GenSLMColatorForInference(DataCollatorForLanguageModeling):
+    """Augment the underlying DataCollatorForLanguageModeling to handle
+    multiple batch encoding inputs."""
+
+    def __init__(
+        self, return_codon: bool = True, return_aminoacid: bool = False, **kwargs
+    ):
+        self.return_codon = return_codon
+        self.return_aminoacid = return_aminoacid
+        super().__init__(**kwargs)
+
+    def tokenize(self, sequences: List[str]) -> BatchEncoding:
+        return self.tokenizer(
+            sequences,
+            return_tensors="pt",
+            truncation=True,
+            padding=True,
+        )
+
+    def torch_call(self, examples: List[Dict[str, BatchEncoding]]) -> Dict[str, Any]:
+        if self.return_codon and self.return_aminoacid:
+            # The first half of the batch is the codon sequences
+            # and the second half is the amino acid sequences
+            return self.tokenize(
+                [e["codon"] for e in examples] + [e["aminoacid"] for e in examples]
+            )
+        elif self.return_codon:
+            return self.tokenize([e["codon"] for e in examples])
+        elif self.return_aminoacid:
+            return self.tokenize([e["aminoacid"] for e in examples])
         assert False
 
 
@@ -362,9 +386,7 @@ class GenSLMTrainer(Trainer):
             # Compute the contrastive loss following SimCLR
             loss += model.contrastive_head(avg_embed)
             return (loss, outputs) if return_outputs else loss
-        #print(f"{type(inputs)=}")
-        #print(f"{inputs.keys()}")
-        #print(f"{inputs['input_ids'].shape=}")
+
         return super().compute_loss(model, inputs, return_outputs=return_outputs)
 
 
@@ -392,11 +414,12 @@ class GenSLMTrainingConfig:
 def main():
     config = GenSLMTrainingConfig()
 
+    # TODO: This would be a good option to try for more efficient packing: group_by_length
     args = TrainingArguments(
         output_dir=config.output_path,
         per_device_train_batch_size=64,
-        #per_device_eval_batch_size=128,
-        #evaluation_strategy="steps",
+        # per_device_eval_batch_size=128,
+        # evaluation_strategy="steps",
         # eval_steps=50,
         logging_steps=25,
         gradient_accumulation_steps=2,
