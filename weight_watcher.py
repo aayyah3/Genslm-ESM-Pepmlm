@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 
 
-def main(model_path: Path, output_path: Path):
+def main(model_path: Path, output_path: Path) -> None:
     model = EsmForMaskedLM.from_pretrained(model_path)
     watcher = ww.WeightWatcher(model=model)
     details = watcher.analyze(plot=True, savefig=str(output_path), randomize=True)
