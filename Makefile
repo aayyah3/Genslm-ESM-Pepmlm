@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := all
-package_name = deepdrivemd
+package_name = genslm_esm
 extra_folders = tests/ examples/ 
 isort = isort $(package_name) $(extra_folders)
 black = black --target-version py37 $(package_name) $(extra_folders)
