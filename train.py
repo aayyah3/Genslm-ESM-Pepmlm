@@ -297,12 +297,22 @@ class ContrastiveProjectionHead(nn.Module):
         # The projection representions z are trained to become invariant to
         # many gene/protein specific features
         # TODO: Try a deeper/wider projection head
-        self.projection = nn.Linear(embedding_size, projection_size)
+        self.codon_projection = nn.Linear(embedding_size, projection_size)
+        self.aminoacid_projection = nn.Linear(embedding_size, projection_size)
         self.loss_fn = ContrastiveLoss(temperature=temperature)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Collect the codon and aminoacid embeddings separately
+        codon_embed = x[:, : x.shape[1] // 2]
+        aminoacid_embed = x[:, x.shape[1] // 2 :]
+
         # Project the embeddings into a lower dimensional space
-        z = self.projection(F.relu(x, inplace=True))
+        z_codon = self.codon_projection(F.relu(codon_embed, inplace=True))
+        z_aminoacid = self.codon_projection(F.relu(aminoacid_embed, inplace=True))
+
+        # Concatenate the codon and aminoacid embeddings
+        z = torch.cat([z_codon, z_aminoacid], dim=1)
+
         # Compute the contrastive loss following SimCLR
         return self.loss_fn(z)
 
@@ -343,7 +353,7 @@ class GenSLMTrainingConfig:
     base_model: str = "facebook/esm2_t6_8M_UR50D"
     tokenizer_path: str = "tokenizer_esm_genslm"
     output_path: str = "mdh_natural_sequences_run_1"
-    #data_path: str = "/lambda_stor/homes/khippe/genslm_foundation/genome_data/mdh_sc23/fasta/mdh_natural_sequences.ffn"
+    # data_path: str = "/lambda_stor/homes/khippe/genslm_foundation/genome_data/mdh_sc23/fasta/mdh_natural_sequences.ffn"
     data_path: str = "/lambda_stor/homes/khippe/genslm_foundation/genome_data/curriculum_datasets/curriculum_2/curriculum_2_train.h5"
 
     def __post_init__(self):
