@@ -204,7 +204,7 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
             return_tensors="pt",
             truncation=True,
             padding=True,
-            return_special_tokens_mask=self.train_mode,
+            return_special_tokens_mask=self.train_mode and self.mlm,
         )
 
     def torch_call_helper(self, batch: BatchEncoding) -> BatchEncoding:
@@ -215,11 +215,11 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
         if not self.train_mode:
             return batch
 
-        # If special token mask has been preprocessed, pop it from the dict.
-        special_tokens_mask = batch.pop("special_tokens_mask", None)
         if self.mlm:
+            # If special token mask has been preprocessed, pop it from the dict.
             batch["input_ids"], batch["labels"] = self.torch_mask_tokens(
-                batch["input_ids"], special_tokens_mask=special_tokens_mask
+                batch["input_ids"],
+                special_tokens_mask=batch.pop("special_tokens_mask", None),
             )
         else:
             labels = batch["input_ids"].clone()
