@@ -94,8 +94,8 @@ class ContrastiveProjectionHead(nn.Module):
         self,
         hidden_size: int,
         projection_size: int,
+        pooler: nn.Module,
         temperature: float = 0.1,
-        pooler: nn.Module = MeanPooler(),
     ) -> None:
         super().__init__()
         # The projection representions z are trained to become invariant to
