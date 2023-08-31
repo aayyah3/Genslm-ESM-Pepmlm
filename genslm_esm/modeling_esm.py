@@ -20,18 +20,12 @@ class ContrastiveEsmConfig(EsmConfig):
         self,
         compute_contrastive_loss: bool = False,
         contrastive_temperature: float = 0.1,
-        contrastive_projection_size: Optional[int] = None,
         contrastive_pooler: str = "mean",
         **kwargs
     ):
         super().__init__(**kwargs)
         self.compute_contrastive_loss = compute_contrastive_loss
         self.contrastive_temperature = contrastive_temperature
-        self.contrastive_projection_size = (
-            self.hidden_size // 4
-            if contrastive_projection_size is None
-            else contrastive_projection_size
-        )
         self.contrastive_pooler = contrastive_pooler
 
 
@@ -95,15 +89,20 @@ class ContrastiveProjectionHead(nn.Module):
         super().__init__()
         # The projection representions z are trained to become invariant to
         # many gene/protein specific features
-        # TODO: Try a deeper/wider projection head
+
         # We use a different projection head for codons and amino acids
         # since, by default, the embeddings fall into different subspaces.
-        self.codon_projection = nn.Linear(
-            config.hidden_size, config.contrastive_projection_size
+        self.codon_projection = nn.Sequential(
+            nn.Linear(config.hidden_size, config.hidden_size // 2),
+            nn.ReLU(),
+            nn.Linear(config.hidden_size // 2, config.hidden_size // 4),
         )
-        self.aminoacid_projection = nn.Linear(
-            config.hidden_size, config.contrastive_projection_size
+        self.aminoacid_projection = nn.Sequential(
+            nn.Linear(config.hidden_size, config.hidden_size // 2),
+            nn.ReLU(),
+            nn.Linear(config.hidden_size // 2, config.hidden_size // 4),
         )
+
         self.loss_fn = ContrastiveLoss(temperature=config.contrastive_temperature)
         self.pooler = POOLER_DISPATCH[config.contrastive_pooler](config)
 
@@ -116,15 +115,18 @@ class ContrastiveProjectionHead(nn.Module):
         x = self.pooler(x)  # (batch_size, hidden_size)
 
         # Collect the codon and aminoacid embeddings separately
+        # These have shape (batch_size // 2, hidden_size)
         half_batch_size = x.shape[0] // 2
         codon_embed = x[:half_batch_size]
         aminoacid_embed = x[half_batch_size:]
 
         # Project the embeddings into a lower dimensional space
-        z_codon = self.codon_projection(F.relu(codon_embed))
-        z_aminoacid = self.codon_projection(F.relu(aminoacid_embed))
+        # These have shape (batch_size // 2, projection_size)
+        z_codon = self.codon_projection(codon_embed)
+        z_aminoacid = self.aminoacid_projection(aminoacid_embed)
 
         # Concatenate the codon and aminoacid embeddings
+        # This has shape (batch_size, projection_size)
         z = torch.cat([z_codon, z_aminoacid], dim=0)
 
         # Compute the contrastive loss following SimCLR
@@ -137,7 +139,6 @@ class EsmForContrastiveMaskedLM(EsmForMaskedLM):
         config: EsmConfig,
         compute_contrastive_loss: bool = False,
         contrastive_temperature: float = 0.1,
-        contrastive_projection_size: Optional[int] = None,
         contrastive_pooler: str = "mean",
     ):
         super().__init__(config)
@@ -145,11 +146,6 @@ class EsmForContrastiveMaskedLM(EsmForMaskedLM):
         # Inject contrastive loss parameters into the config
         config.compute_contrastive_loss = compute_contrastive_loss
         config.contrastive_temperature = contrastive_temperature
-        config.contrastive_projection_size = (
-            config.hidden_size // 4
-            if contrastive_projection_size is None
-            else contrastive_projection_size
-        )
         config.contrastive_pooler = contrastive_pooler
 
         if config.compute_contrastive_loss:

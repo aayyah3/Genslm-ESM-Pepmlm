@@ -98,6 +98,7 @@ class FastaDataset(Dataset):
         # Read the fasta file
         dna_sequenes = self.read_fasta_only_seq(file_path)
         # Preprocess the sequences into codons
+        # TODO: We could also use an <unk> token (this would be better)
         self.sequences = [
             group_codons(seq) for seq in dna_sequenes if len(seq) % 3 == 0
         ]
