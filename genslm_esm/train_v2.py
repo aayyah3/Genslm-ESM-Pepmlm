@@ -39,7 +39,7 @@ def main():
     # TODO: This would be a good option to try for more efficient packing: group_by_length
     args = TrainingArguments(
         output_dir=config.output_path,
-        per_device_train_batch_size=64,
+        per_device_train_batch_size=8,
         # per_device_eval_batch_size=128,
         # evaluation_strategy="steps",
         # eval_steps=50,
