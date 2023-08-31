@@ -116,15 +116,16 @@ class ContrastiveProjectionHead(nn.Module):
         x = self.pooler(x)  # (batch_size, hidden_size)
 
         # Collect the codon and aminoacid embeddings separately
-        codon_embed = x[:, : x.shape[1] // 2]
-        aminoacid_embed = x[:, x.shape[1] // 2 :]
+        half_batch_size = x.shape[0] // 2
+        codon_embed = x[:half_batch_size]
+        aminoacid_embed = x[half_batch_size:]
 
         # Project the embeddings into a lower dimensional space
-        z_codon = self.codon_projection(F.relu(codon_embed, inplace=True))
-        z_aminoacid = self.codon_projection(F.relu(aminoacid_embed, inplace=True))
+        z_codon = self.codon_projection(F.relu(codon_embed))
+        z_aminoacid = self.codon_projection(F.relu(aminoacid_embed))
 
         # Concatenate the codon and aminoacid embeddings
-        z = torch.cat([z_codon, z_aminoacid], dim=1)
+        z = torch.cat([z_codon, z_aminoacid], dim=0)
 
         # Compute the contrastive loss following SimCLR
         return self.loss_fn(z)
