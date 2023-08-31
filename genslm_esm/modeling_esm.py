@@ -139,6 +139,8 @@ class EsmForContrastiveMaskedLM(EsmForMaskedLM):
         contrastive_projection_size: Optional[int] = None,
         contrastive_pooler: str = "mean",
     ):
+        super().__init__(config)
+
         # Inject contrastive loss parameters into the config
         config.compute_contrastive_loss = compute_contrastive_loss
         config.contrastive_temperature = contrastive_temperature
@@ -151,9 +153,6 @@ class EsmForContrastiveMaskedLM(EsmForMaskedLM):
 
         if config.compute_contrastive_loss:
             self.contrastive_head = ContrastiveProjectionHead(config)
-
-        # Call this last to init weight of all layers properly
-        super().__init__(config)
 
     def forward(
         self,
