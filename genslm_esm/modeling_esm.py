@@ -12,6 +12,7 @@ from transformers.models.esm.modeling_esm import (
 from transformers.models.esm.configuration_esm import EsmConfig
 
 
+# TODO: Currently not used
 class ContrastiveEsmConfig(EsmConfig):
     """Add contrastive loss parameters to the ESM config."""
 
@@ -90,23 +91,21 @@ POOLER_DISPATCH = {"mean": MeanPooler, "first": FirstPooler}
 
 
 class ContrastiveProjectionHead(nn.Module):
-    def __init__(
-        self,
-        hidden_size: int,
-        projection_size: int,
-        pooler: nn.Module,
-        temperature: float = 0.1,
-    ) -> None:
+    def __init__(self, config: ContrastiveEsmConfig) -> None:
         super().__init__()
         # The projection representions z are trained to become invariant to
         # many gene/protein specific features
         # TODO: Try a deeper/wider projection head
         # We use a different projection head for codons and amino acids
         # since, by default, the embeddings fall into different subspaces.
-        self.codon_projection = nn.Linear(hidden_size, projection_size)
-        self.aminoacid_projection = nn.Linear(hidden_size, projection_size)
-        self.loss_fn = ContrastiveLoss(temperature=temperature)
-        self.pooler = pooler
+        self.codon_projection = nn.Linear(
+            config.hidden_size, config.contrastive_projection_size
+        )
+        self.aminoacid_projection = nn.Linear(
+            config.hidden_size, config.contrastive_projection_size
+        )
+        self.loss_fn = ContrastiveLoss(temperature=config.contrastive_temperature)
+        self.pooler = POOLER_DISPATCH[config.contrastive_pooler](config)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Assumes that the codon embeddings are the first half of the tensor
@@ -132,14 +131,26 @@ class ContrastiveProjectionHead(nn.Module):
 
 
 class EsmForContrastiveMaskedLM(EsmForMaskedLM):
-    def __init__(self, config: ContrastiveEsmConfig) -> None:
+    def __init__(
+        self,
+        config: EsmConfig,
+        compute_contrastive_loss: bool = False,
+        contrastive_temperature: float = 0.1,
+        contrastive_projection_size: Optional[int] = None,
+        contrastive_pooler: str = "mean",
+    ):
+        # Inject contrastive loss parameters into the config
+        config.compute_contrastive_loss = compute_contrastive_loss
+        config.contrastive_temperature = contrastive_temperature
+        config.contrastive_projection_size = (
+            config.hidden_size // 4
+            if contrastive_projection_size is None
+            else contrastive_projection_size
+        )
+        config.contrastive_pooler = contrastive_pooler
+
         if config.compute_contrastive_loss:
-            self.contrastive_head = ContrastiveProjectionHead(
-                hidden_size=config.hidden_size,
-                projection_size=config.contrastive_projection_size,
-                temperature=config.contrastive_temperature,
-                pooler=POOLER_DISPATCH[config.contrastive_pooler](config),
-            )
+            self.contrastive_head = ContrastiveProjectionHead(config)
 
         # Call this last to init weight of all layers properly
         super().__init__(config)
