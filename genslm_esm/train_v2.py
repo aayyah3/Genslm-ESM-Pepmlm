@@ -8,7 +8,7 @@ from genslm_esm.dataset import (
     GenSLMColatorForLanguageModeling,
 )
 
-from genslm_esm.modeling_esm import EsmForContrastiveMaskedLM, ContrastiveEsmConfig
+from genslm_esm.modeling_esm import EsmForContrastiveMaskedLM
 
 
 @dataclass
@@ -58,11 +58,8 @@ def main():
     )
 
     tokenizer = EsmTokenizer.from_pretrained(config.tokenizer_path)
-    model_config = ContrastiveEsmConfig(
-        compute_contrastive_loss=config.compute_contrastive_loss
-    )
     model = EsmForContrastiveMaskedLM.from_pretrained(
-        config.base_model, config=model_config
+        config.base_model, compute_contrastive_loss=config.compute_contrastive_loss
     )
 
     # TODO: During fine tuning or training from a checkpoint, this will restart the weights
