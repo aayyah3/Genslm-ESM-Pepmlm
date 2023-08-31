@@ -17,7 +17,6 @@ class GenSLMTrainingConfig:
     compute_aminoacid_loss: bool = True
     compute_contrastive_loss: bool = True
     temperature: float = 0.1
-    max_length: int = 1024
     base_model: str = "facebook/esm2_t6_8M_UR50D"
     tokenizer_path: str = "tokenizer_esm_genslm"
     output_path: str = "mdh_natural_sequences_run_2_contrastive"
