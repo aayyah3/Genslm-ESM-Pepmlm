@@ -80,7 +80,9 @@ def group_codons(seq: str) -> str:
 
 
 def codon_seq_to_amino_acid(codon_seq: str) -> str:
-    return " ".join(translation_table.get(codon, "<unk>") for codon in codon_seq.split())
+    return " ".join(
+        translation_table.get(codon, "<unk>") for codon in codon_seq.split()
+    )
 
 
 class FastaDataset(Dataset):
@@ -165,7 +167,7 @@ class HDF5Dataset(Dataset):
         # Load the sequence from the HDF5 file
         dna_sequence: str = self.h5_file["sequence"][idx].decode("utf-8")
         codon_sequence = group_codons(dna_sequence)
-    
+
         # The output data dictionary to be returned
         data = {}
 
@@ -206,9 +208,13 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
         )
 
     def torch_call_helper(self, batch: BatchEncoding) -> BatchEncoding:
+        # First, tokenize the batch
+        batch = self.tokenize(batch)
+
         # We only need to mask tokens if we are training
         if not self.train_mode:
             return batch
+
         # If special token mask has been preprocessed, pop it from the dict.
         special_tokens_mask = batch.pop("special_tokens_mask", None)
         if self.mlm:
@@ -226,14 +232,11 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
         if self.return_codon and self.return_aminoacid:
             # The first half of the batch is the codon sequences
             # and the second half is the amino acid sequences
-            tokenized_seqs = self.tokenize(
+            return self.torch_call_helper(
                 [e["codon"] for e in examples] + [e["aminoacid"] for e in examples]
             )
-            return self.torch_call_helper(tokenized_seqs)
         elif self.return_codon:
-            tokenized_seqs = self.tokenize([e["codon"] for e in examples])
-            return self.torch_call_helper(tokenized_seqs)
+            return self.torch_call_helper([e["codon"] for e in examples])
         elif self.return_aminoacid:
-            tokenized_seqs = self.tokenize([e["aminoacid"] for e in examples])
-            return self.torch_call_helper(tokenized_seqs)
+            return self.torch_call_helper([e["aminoacid"] for e in examples])
         assert False
