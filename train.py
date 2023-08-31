@@ -297,6 +297,8 @@ class ContrastiveProjectionHead(nn.Module):
         # The projection representions z are trained to become invariant to
         # many gene/protein specific features
         # TODO: Try a deeper/wider projection head
+        # We use a different projection head for codons and amino acids
+        # since, by default, the embeddings fall into different subspaces.
         self.codon_projection = nn.Linear(embedding_size, projection_size)
         self.aminoacid_projection = nn.Linear(embedding_size, projection_size)
         self.loss_fn = ContrastiveLoss(temperature=temperature)
