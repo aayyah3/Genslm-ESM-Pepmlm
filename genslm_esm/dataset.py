@@ -80,7 +80,7 @@ def group_codons(seq: str) -> str:
 
 
 def codon_seq_to_amino_acid(codon_seq: str) -> str:
-    return "".join(translation_table[codon] for codon in codon_seq.split())
+    return " ".join(translation_table.get(codon, "<unk>") for codon in codon_seq.split())
 
 
 class FastaDataset(Dataset):
@@ -165,7 +165,7 @@ class HDF5Dataset(Dataset):
         # Load the sequence from the HDF5 file
         dna_sequence: str = self.h5_file["sequence"][idx].decode("utf-8")
         codon_sequence = group_codons(dna_sequence)
-
+    
         # The output data dictionary to be returned
         data = {}
 

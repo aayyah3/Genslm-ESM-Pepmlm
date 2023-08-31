@@ -44,9 +44,10 @@ class GenSLMTrainingConfig:
     max_length: int = 1024
     base_model: str = "facebook/esm2_t6_8M_UR50D"
     tokenizer_path: str = "tokenizer_esm_genslm"
-    output_path: str = "mdh_natural_sequences_run_1"
-    # data_path: str = "/lambda_stor/homes/khippe/genslm_foundation/genome_data/mdh_sc23/fasta/mdh_natural_sequences.ffn"
+    output_path: str = "mdh_natural_sequences_run_2"
+    #data_path: str = "/lambda_stor/homes/khippe/genslm_foundation/genome_data/mdh_sc23/fasta/mdh_natural_sequences.ffn"
     data_path: str = "/lambda_stor/homes/khippe/genslm_foundation/genome_data/curriculum_datasets/curriculum_2/curriculum_2_train.h5"
+    #data_path: str = "/lambda_stor/homes/khippe/genslm_foundation/genome_data/pgfam_30k/PGF_00008115.ffn"
 
     def __post_init__(self):
         if self.compute_contrastive_loss:
@@ -63,7 +64,7 @@ def main():
     # TODO: This would be a good option to try for more efficient packing: group_by_length
     args = TrainingArguments(
         output_dir=config.output_path,
-        per_device_train_batch_size=64,
+        per_device_train_batch_size=8,
         # per_device_eval_batch_size=128,
         # evaluation_strategy="steps",
         # eval_steps=50,
