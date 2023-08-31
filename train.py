@@ -99,13 +99,9 @@ class FastaDataset(Dataset):
     def __init__(
         self,
         file_path: str,
-        tokenizer: PreTrainedTokenizerFast,
-        max_length: int = 1024,
         return_codon: bool = True,
         return_aminoacid: bool = False,
     ) -> None:
-        self.tokenizer = tokenizer
-        self.max_length = max_length
         self.return_codon = return_codon
         self.return_aminoacid = return_aminoacid
 
@@ -128,36 +124,23 @@ class FastaDataset(Dataset):
         ]
         return lines[1::2]
 
-    def tokenize(self, sequence: str) -> BatchEncoding:
-        return self.tokenizer(
-            sequence,
-            return_tensors="pt",
-            truncation=True,
-            padding="max_length",
-            max_length=self.max_length,
-            return_special_tokens_mask=True,
-        )
-
     def __len__(self) -> int:
         return len(self.sequences)
 
-    def __getitem__(self, idx: int) -> Dict[str, BatchEncoding]:
+    def __getitem__(self, idx: int) -> Dict[str, str]:
         # Get the idx'th codon sequence
         codon_sequence = self.sequences[idx]
 
         # The output data dictionary to be returned
         data = {}
 
-        # Tokenize the codon sequence
+        # Return the codon sequence
         if self.return_codon:
-            data["codon"] = codon_sequence  # self.tokenize(codon_sequence)
+            data["codon"] = codon_sequence
 
-        # Tokenize the amino acid sequence
+        # Return the amino acid sequence
         if self.return_aminoacid:
-            amino_acid_sequence = codon_seq_to_amino_acid(codon_sequence)
-            data[
-                "aminoacid"
-            ] = amino_acid_sequence  # self.tokenize(amino_acid_sequence)
+            data["aminoacid"] = codon_seq_to_amino_acid(codon_sequence)
 
         return data
 
@@ -168,14 +151,10 @@ class HDF5Dataset(Dataset):
     def __init__(
         self,
         file_path: str,
-        tokenizer: PreTrainedTokenizerFast,
-        max_length: int = 1024,
         return_codon: bool = True,
         return_aminoacid: bool = False,
     ) -> None:
         self.file_path = file_path
-        self.tokenizer = tokenizer
-        self.max_length = max_length
         self.return_codon = return_codon
         self.return_aminoacid = return_aminoacid
         self.h5_file = None
@@ -188,19 +167,10 @@ class HDF5Dataset(Dataset):
         if self.h5_file is None:
             self.h5_file = h5py.File(self.file_path, "r")
 
-    def tokenize(self, sequence: str) -> BatchEncoding:
-        return self.tokenizer(
-            sequence,
-            return_tensors="pt",
-            truncation=True,
-            padding="max_length",
-            max_length=self.max_length,
-        )
-
     def __len__(self) -> int:
         return self.len
 
-    def __getitem__(self, idx: int) -> Dict[str, BatchEncoding]:
+    def __getitem__(self, idx: int) -> Dict[str, str]:
         # Open the HDF5 file in the dataloader worker process
         self._init_h5()
 
@@ -211,14 +181,13 @@ class HDF5Dataset(Dataset):
         # The output data dictionary to be returned
         data = {}
 
-        # Tokenize the codon sequence
+        # Return the codon sequence
         if self.return_codon:
-            data["codon"] = self.tokenize(codon_sequence)
+            data["codon"] = codon_sequence
 
-        # Tokenize the amino acid sequence
+        # Return the amino acid sequence
         if self.return_aminoacid:
-            amino_acid_sequence = codon_seq_to_amino_acid(codon_sequence)
-            data["aminoacid"] = self.tokenize(amino_acid_sequence)
+            data["aminoacid"] = codon_seq_to_amino_acid(codon_sequence)
 
         return data
 
@@ -228,10 +197,15 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
     multiple batch encoding inputs."""
 
     def __init__(
-        self, return_codon: bool = True, return_aminoacid: bool = False, **kwargs
+        self,
+        return_codon: bool = True,
+        return_aminoacid: bool = False,
+        train_mode: bool = False,
+        **kwargs,
     ):
         self.return_codon = return_codon
         self.return_aminoacid = return_aminoacid
+        self.train_mode = train_mode
         super().__init__(**kwargs)
 
     def tokenize(self, sequences: List[str]) -> BatchEncoding:
@@ -239,12 +213,14 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
             sequences,
             return_tensors="pt",
             truncation=True,
-            padding=True,  # "max_length",
-            # max_length=max(sequences),  # self.max_length,
-            return_special_tokens_mask=True,
+            padding=True,
+            return_special_tokens_mask=self.train_mode,
         )
 
     def torch_call_helper(self, batch: BatchEncoding) -> BatchEncoding:
+        # We only need to mask tokens if we are training
+        if not self.train_mode:
+            return batch
         # If special token mask has been preprocessed, pop it from the dict.
         special_tokens_mask = batch.pop("special_tokens_mask", None)
         if self.mlm:
@@ -272,39 +248,6 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
         elif self.return_aminoacid:
             tokenized_seqs = self.tokenize([e["aminoacid"] for e in examples])
             return self.torch_call_helper(tokenized_seqs)
-        assert False
-
-
-class GenSLMColatorForInference(DataCollatorForLanguageModeling):
-    """Augment the underlying DataCollatorForLanguageModeling to handle
-    multiple batch encoding inputs."""
-
-    def __init__(
-        self, return_codon: bool = True, return_aminoacid: bool = False, **kwargs
-    ):
-        self.return_codon = return_codon
-        self.return_aminoacid = return_aminoacid
-        super().__init__(**kwargs)
-
-    def tokenize(self, sequences: List[str]) -> BatchEncoding:
-        return self.tokenizer(
-            sequences,
-            return_tensors="pt",
-            truncation=True,
-            padding=True,
-        )
-
-    def torch_call(self, examples: List[Dict[str, BatchEncoding]]) -> Dict[str, Any]:
-        if self.return_codon and self.return_aminoacid:
-            # The first half of the batch is the codon sequences
-            # and the second half is the amino acid sequences
-            return self.tokenize(
-                [e["codon"] for e in examples] + [e["aminoacid"] for e in examples]
-            )
-        elif self.return_codon:
-            return self.tokenize([e["codon"] for e in examples])
-        elif self.return_aminoacid:
-            return self.tokenize([e["aminoacid"] for e in examples])
         assert False
 
 
@@ -440,6 +383,8 @@ def main():
 
     model = EsmForMaskedLM.from_pretrained(config.base_model)
 
+    # TODO: During fine tuning or training from a checkpoint, this will restart the weights
+    #       ONly do if the len(tokenizer) is not the same as the embedding layer
     # Inject new vocabulary (modifies model.config)
     model.resize_token_embeddings(len(tokenizer))
     # Make a new lm_head with uninitialized weights using the correct shape
@@ -456,8 +401,6 @@ def main():
     dset_class = HDF5Dataset if config.data_path.endswith(".h5") else FastaDataset
     train_dataset = dset_class(
         file_path=config.data_path,
-        tokenizer=tokenizer,
-        max_length=config.max_length,
         return_codon=config.compute_codon_loss,
         return_aminoacid=config.compute_aminoacid_loss,
     )
@@ -465,6 +408,7 @@ def main():
     data_collator = GenSLMColatorForLanguageModeling(
         return_codon=config.compute_codon_loss,
         return_aminoacid=config.compute_aminoacid_loss,
+        train_mode=True,
         tokenizer=tokenizer,
         mlm=True,
         mlm_probability=0.15,
