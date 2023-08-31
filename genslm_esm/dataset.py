@@ -163,7 +163,7 @@ class HDF5Dataset(Dataset):
         self._init_h5()
 
         # Load the sequence from the HDF5 file
-        dna_sequence: str = self.h5_file["sequences"][idx].decode("utf-8")
+        dna_sequence: str = self.h5_file["sequence"][idx].decode("utf-8")
         codon_sequence = group_codons(dna_sequence)
 
         # The output data dictionary to be returned
