@@ -16,10 +16,11 @@ class GenSLMTrainingConfig:
     compute_codon_loss: bool = True
     compute_aminoacid_loss: bool = True
     compute_contrastive_loss: bool = True
-    temperature: float = 0.1
+    contrastive_temperature: float = 0.1
+    contrastive_pooler: str = "first"
     base_model: str = "facebook/esm2_t6_8M_UR50D"
     tokenizer_path: str = "tokenizer_esm_genslm"
-    output_path: str = "mdh_natural_sequences_run_3_contrastive"
+    output_path: str = "mdh_natural_sequences_run_4_contrastive_firstpool"
     data_path: str = "/lambda_stor/homes/khippe/genslm_foundation/genome_data/mdh_sc23/fasta/mdh_natural_sequences.ffn"
     # data_path: str = "/lambda_stor/homes/khippe/genslm_foundation/genome_data/curriculum_datasets/curriculum_2/curriculum_2_train.h5"
 
@@ -58,7 +59,10 @@ def main():
 
     tokenizer = EsmTokenizer.from_pretrained(config.tokenizer_path)
     model = EsmForContrastiveMaskedLM.from_pretrained(
-        config.base_model, compute_contrastive_loss=config.compute_contrastive_loss
+        config.base_model,
+        compute_contrastive_loss=config.compute_contrastive_loss,
+        contrastive_temperature=config.contrastive_temperature,
+        contrastive_pooler=config.contrastive_pooler,
     )
 
     # TODO: During fine tuning or training from a checkpoint, this will restart the weights
