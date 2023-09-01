@@ -10,6 +10,7 @@ def main(model_path: Path, output_path: Path) -> None:
     watcher = ww.WeightWatcher(model=model)
     details = watcher.analyze(plot=False, savefig=str(output_path), randomize=True)
     summary = watcher.get_summary()
+    output_path.mkdir(exist_ok=True)
     details.to_csv(str(output_path / "details.csv"))
     pd.DataFrame(summary, index=[0]).to_csv(str(output_path / "summary.csv"))
 
