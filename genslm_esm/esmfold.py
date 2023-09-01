@@ -69,7 +69,7 @@ if __name__ == "__main__":
         "-o", "--output_dir", required=True, help="Folding output directory"
     )
     parser.add_argument(
-        "-b", "--batch_size", default=1, help="How many sequences to fold at once"
+        "-b", "--batch_size", default=1, type=int, help="Sequences to fold at once"
     )
     args = parser.parse_args()
     main(args.fasta_file, args.output_dir, args.batch_size)
