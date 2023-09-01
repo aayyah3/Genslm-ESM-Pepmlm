@@ -55,7 +55,7 @@ if __name__ == "__main__":
         "-f", "--fasta_file", required=True, help="Amino acid sequences in fasta format"
     )
     parser.add_argument(
-        "-o", "--output", required=True, help="Folding output directory"
+        "-o", "--output_dir", required=True, help="Folding output directory"
     )
     parser.add_argument(
         "-b", "--batch_size", default=1, help="How many sequences to fold at once"
