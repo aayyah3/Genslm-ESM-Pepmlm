@@ -23,17 +23,19 @@ def main() -> None:
     # model.trunk.set_chunk_size(64)
 
     # Test protein sequence
-    test_protein = "MGAGASAEEKHSRELEKKLKEDAEKDARTVKLLLLGAGESGKSTIVKQMKIIHQDGYSLEECLEFIAIIYGNTLQSILAIVRAMTTLNIQYGDSARQDDARKLMHMADTIEEGTMPKEMSDIIQRLWKDSGIQACFERASEYQLNDSAGYYLSDLERLVTPGYVPTEQDVLRSRVKTTGIIETQFSFKDLNFRMFDVGGQRSERKKWIHCFEGVTCIIFIAALSAYDMVLVEDDEVNRMHESLHLFNSICNHRYFATTSIVLFLNKKDVFFEKIKKAHLSICFPDYDGPNTYEDAGNYIKVQFLELNMRRDVKEIYSHMTCATDTQNVKFVFDAVTDIIIKENLKDCGLF"
+    test_protein = [
+        "MGAGASAEEKHSRELEKKLKEDAEKDARTVKLLLLGAGESGKSTIVKQMKIIHQDGYSLEECLEFIAIIYGNTLQSILAIVRAMTTLNIQYGDSARQDDARKLMHMADTIEEGTMPKEMSDIIQRLWKDSGIQACFERASEYQLNDSAGYYLSDLERLVTPGYVPTEQDVLRSRVKTTGIIETQFSFKDLNFRMFDVGGQRSERKKWIHCFEGVTCIIFIAALSAYDMVLVEDDEVNRMHESLHLFNSICNHRYFATTSIVLFLNKKDVFFEKIKKAHLSICFPDYDGPNTYEDAGNYIKVQFLELNMRRDVKEIYSHMTCATDTQNVKFVFDAVTDIIIKENLKDCGLF"
+    ]
 
     # Tokenize protein sequence
-    tokenized_input = tokenizer(
-        [test_protein], return_tensors="pt", add_special_tokens=False
-    )["input_ids"]
+    # tokenized_input = tokenizer(
+    #     [test_protein], return_tensors="pt", add_special_tokens=False
+    # )["input_ids"]
 
-    tokenized_input = tokenized_input.cuda()
+    # tokenized_input = tokenized_input.cuda()
 
-    with torch.no_grad():
-        pdbs = model.infer_pdbs(tokenized_input)
+    # with torch.no_grad():
+    pdbs = model.infer_pdbs(test_protein)
 
     with open("result.pdb", "w") as f:
         f.write(pdbs[0])
