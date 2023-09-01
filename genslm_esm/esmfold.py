@@ -6,10 +6,22 @@ https://colab.research.google.com/github/huggingface/notebooks/blob/main/example
 import torch
 from pathlib import Path
 from tqdm import tqdm
+from typing import List
 from argparse import ArgumentParser
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader, Dataset
 from transformers import EsmForProteinFolding
 from genslm_esm.dataset import read_fasta
+
+
+class SequenceDataset(Dataset):
+    def __init__(self, sequences: List[str]) -> None:
+        self.sequences = sequences
+
+    def __len__(self) -> int:
+        return len(self.sequences)
+
+    def __getitem__(self, idx: int) -> str:
+        return self.sequences[idx]
 
 
 def main(fasta_file: str, output_dir: str, batch_size: int) -> None:
@@ -26,7 +38,7 @@ def main(fasta_file: str, output_dir: str, batch_size: int) -> None:
     # Uncomment this line if your GPU memory is 16GB or less, or if you're folding longer (over 600 or so) sequences
     # model.trunk.set_chunk_size(64)
 
-    dataset = TensorDataset([seq.sequence for seq in read_fasta(fasta_file)])
+    dataset = SequenceDataset([seq.sequence for seq in read_fasta(fasta_file)])
 
     dataloader = DataLoader(dataset, batch_size=batch_size)
 
