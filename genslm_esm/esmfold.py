@@ -7,9 +7,9 @@ import torch
 from pathlib import Path
 from tqdm import tqdm
 from argparse import ArgumentParser
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, TensorDataset
 from transformers import EsmForProteinFolding
-from genslm_esm.dataset import FastaDataset
+from genslm_esm.dataset import read_fasta
 
 
 def main(fasta_file: str, output_dir: str, batch_size: int) -> None:
@@ -26,9 +26,7 @@ def main(fasta_file: str, output_dir: str, batch_size: int) -> None:
     # Uncomment this line if your GPU memory is 16GB or less, or if you're folding longer (over 600 or so) sequences
     # model.trunk.set_chunk_size(64)
 
-    dataset = FastaDataset(
-        file_path=fasta_file, return_codon=False, return_aminoacid=True
-    )
+    dataset = TensorDataset([seq.sequence for seq in read_fasta(fasta_file)])
 
     dataloader = DataLoader(dataset, batch_size=batch_size)
 
@@ -40,7 +38,8 @@ def main(fasta_file: str, output_dir: str, batch_size: int) -> None:
 
     for batch in tqdm(dataloader):
         # Run inference
-        pdbs = model.infer_pdbs(batch["aminoacid"])
+        print(batch)
+        pdbs = model.infer_pdbs(batch)
 
         # Write the PDBs to disk
         for pdb in pdbs:
