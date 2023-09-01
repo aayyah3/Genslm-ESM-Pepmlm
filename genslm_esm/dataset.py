@@ -173,6 +173,16 @@ class FastaDataset(Dataset):
         return data
 
 
+class FastaAminoAcidDataset(FastaDataset):
+    """Assumes the fasta file contains amino acid sequences."""
+
+    def __init__(self, file_path: str) -> None:
+        self.sequences = self.read_fasta_only_seq(file_path)
+
+    def __getitem__(self, idx: int) -> Dict[str, str]:
+        return {"aminoacid": self.sequences[idx]}
+
+
 class HDF5Dataset(Dataset):
     """PyTorch Dataset backed by an HDF5 file which is read on-the-fly."""
 
