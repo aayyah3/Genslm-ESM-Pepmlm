@@ -4,42 +4,60 @@ https://colab.research.google.com/github/huggingface/notebooks/blob/main/example
 """
 
 import torch
-from transformers import AutoTokenizer, EsmForProteinFolding
+from pathlib import Path
+from argparse import ArgumentParser
+from torch.utils.data import Dataloader
+from transformers import EsmForProteinFolding
+from genslm_esm.dataset import FastaDataset
 
 
-def main() -> None:
-    tokenizer = AutoTokenizer.from_pretrained("facebook/esmfold_v1")
+def main(fasta_file: str, output_dir: str, batch_size: int) -> None:
+    # Load the model
     model = EsmForProteinFolding.from_pretrained(
         "facebook/esmfold_v1", low_cpu_mem_usage=True
     )
 
-    model = model.cuda()
-
     # Performance optimization
+    model = model.cuda()
     model.esm = model.esm.half()
     torch.backends.cuda.matmul.allow_tf32 = True
 
     # Uncomment this line if your GPU memory is 16GB or less, or if you're folding longer (over 600 or so) sequences
     # model.trunk.set_chunk_size(64)
 
-    # Test protein sequence
-    test_protein = [
-        "MGAGASAEEKHSRELEKKLKEDAEKDARTVKLLLLGAGESGKSTIVKQMKIIHQDGYSLEECLEFIAIIYGNTLQSILAIVRAMTTLNIQYGDSARQDDARKLMHMADTIEEGTMPKEMSDIIQRLWKDSGIQACFERASEYQLNDSAGYYLSDLERLVTPGYVPTEQDVLRSRVKTTGIIETQFSFKDLNFRMFDVGGQRSERKKWIHCFEGVTCIIFIAALSAYDMVLVEDDEVNRMHESLHLFNSICNHRYFATTSIVLFLNKKDVFFEKIKKAHLSICFPDYDGPNTYEDAGNYIKVQFLELNMRRDVKEIYSHMTCATDTQNVKFVFDAVTDIIIKENLKDCGLF"
-    ]
+    dataset = FastaDataset(
+        file_path=fasta_file, return_codon=False, return_aminoacid=True
+    )
 
-    # Tokenize protein sequence
-    # tokenized_input = tokenizer(
-    #     [test_protein], return_tensors="pt", add_special_tokens=False
-    # )["input_ids"]
+    dataloader = Dataloader(dataset, batch_size=batch_size)
 
-    # tokenized_input = tokenized_input.cuda()
+    # Setup output directory
+    output_dir = Path(output_dir)
+    Path(output_dir).mkdir(exist_ok=True)
 
-    # with torch.no_grad():
-    pdbs = model.infer_pdbs(test_protein)
+    sequence_idx = 0
 
-    with open("result.pdb", "w") as f:
-        f.write(pdbs[0])
+    for batch in dataloader:
+        # Run inference
+        pdbs = model.infer_pdbs(batch["aminoacid"])
+
+        # Write the PDBs to disk
+        for pdb in pdbs:
+            with open(output_dir / f"{sequence_idx}.pdb", "w") as f:
+                f.write(pdb)
+            sequence_idx += 1
 
 
 if __name__ == "__main__":
-    main()
+    parser = ArgumentParser()
+    parser.add_argument(
+        "-f", "--fasta_file", required=True, help="Amino acid sequences in fasta format"
+    )
+    parser.add_argument(
+        "-o", "--output", required=True, help="Folding output directory"
+    )
+    parser.add_argument(
+        "-b", "--batch_size", default=1, help="How many sequences to fold at once"
+    )
+    args = parser.parse_args()
+    main(args.fasta_file, args.output_dir, args.batch_size)

@@ -1,7 +1,8 @@
 import re
 import h5py
 from pathlib import Path
-from typing import Any, Dict, List
+from dataclasses import dataclass
+from typing import Any, Dict, List, Union
 
 from torch.utils.data import Dataset
 from transformers import BatchEncoding, DataCollatorForLanguageModeling
@@ -83,6 +84,42 @@ def codon_seq_to_amino_acid(codon_seq: str) -> str:
     return " ".join(
         translation_table.get(codon, "<unk>") for codon in codon_seq.split()
     )
+
+
+@dataclass
+class Sequence:
+    sequence: str
+    """Biological sequence (Nucleotide sequence)."""
+    tag: str
+    """Sequence description tag."""
+
+    def translate(self) -> "Sequence":
+        amino_acid_seq = codon_seq_to_amino_acid(group_codons(self.sequence))
+        return Sequence(sequence=amino_acid_seq.replace(" ", ""), tag=self.tag)
+
+
+def read_fasta(fasta_file: str) -> List[Sequence]:
+    """Reads fasta file sequences and description tags into dataclass."""
+    text = Path(fasta_file).read_text()
+    pattern = re.compile("^>", re.MULTILINE)
+    non_parsed_seqs = re.split(pattern, text)[1:]
+    lines = [
+        line.replace("\n", "") for seq in non_parsed_seqs for line in seq.split("\n", 1)
+    ]
+
+    return [
+        Sequence(sequence=seq, tag=tag) for seq, tag in zip(lines[1::2], lines[::2])
+    ]
+
+
+def write_fasta(
+    sequences: Union[Sequence, List[Sequence]], fasta_file: str, mode: str = "w"
+) -> None:
+    """Write or append sequences to a fasta file."""
+    seqs = [sequences] if isinstance(sequences, Sequence) else sequences
+    with open(fasta_file, mode) as f:
+        for seq in seqs:
+            f.write(f">{seq.tag}\n{seq.sequence}\n")
 
 
 class FastaDataset(Dataset):
