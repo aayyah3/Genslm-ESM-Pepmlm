@@ -5,8 +5,9 @@ https://colab.research.google.com/github/huggingface/notebooks/blob/main/example
 
 import torch
 from pathlib import Path
+from tqdm import tqdm
 from argparse import ArgumentParser
-from torch.utils.data import Dataloader
+from torch.utils.data import DataLoader
 from transformers import EsmForProteinFolding
 from genslm_esm.dataset import FastaDataset
 
@@ -29,7 +30,7 @@ def main(fasta_file: str, output_dir: str, batch_size: int) -> None:
         file_path=fasta_file, return_codon=False, return_aminoacid=True
     )
 
-    dataloader = Dataloader(dataset, batch_size=batch_size)
+    dataloader = DataLoader(dataset, batch_size=batch_size)
 
     # Setup output directory
     output_dir = Path(output_dir)
@@ -37,7 +38,7 @@ def main(fasta_file: str, output_dir: str, batch_size: int) -> None:
 
     sequence_idx = 0
 
-    for batch in dataloader:
+    for batch in tqdm(dataloader):
         # Run inference
         pdbs = model.infer_pdbs(batch["aminoacid"])
 
