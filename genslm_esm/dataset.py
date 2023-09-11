@@ -153,7 +153,7 @@ def random_split_fasta(
 
     # Log JSON metadata on the split
     metadata = {
-        "input_fasta": str(input_fasta.resolve()),
+        "input_fasta": str(Path(input_fasta).resolve()),
         "output_dir": str(output_dir.resolve()),
         "split": split,
         "seed": seed,
