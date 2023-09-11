@@ -141,7 +141,7 @@ class EsmForContrastiveMaskedLM(EsmForMaskedLM):
     def __init__(
         self,
         config: EsmConfig,
-        vocab_size: Optional[int] = None,
+        new_vocab_size: Optional[int] = None,
         compute_contrastive_loss: bool = False,
         contrastive_temperature: float = 0.1,
         contrastive_pooler: str = "mean",
@@ -152,6 +152,9 @@ class EsmForContrastiveMaskedLM(EsmForMaskedLM):
         config.compute_contrastive_loss = compute_contrastive_loss
         config.contrastive_temperature = contrastive_temperature
         config.contrastive_pooler = contrastive_pooler
+
+        if new_vocab_size is not None:
+            self.resize_model_vocab(new_vocab_size)
 
         if config.compute_contrastive_loss:
             self.contrastive_head = ContrastiveProjectionHead(config)
