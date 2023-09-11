@@ -1,6 +1,8 @@
 import random
 import re
+import json
 import shutil
+from datetime import datetime
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Union
@@ -148,6 +150,17 @@ def random_split_fasta(
 
     # Copy the original fasta file to the output directory for reference
     shutil.copy(input_fasta, output_dir)
+
+    # Log JSON metadata on the split
+    metadata = {
+        "input_fasta": str(input_fasta),
+        "output_dir": str(output_dir),
+        "split": split,
+        "seed": seed,
+        "datetime": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    with open(output_dir / "metadata.json", "w") as f:
+        json.dump(metadata, f, indent=2)
 
 
 class FastaDataset(Dataset):
