@@ -19,7 +19,6 @@ class GenSLMTrainingConfig:
     contrastive_temperature: float = 0.1
     contrastive_pooler: str = "mean"
     base_model: str = "facebook/esm2_t6_8M_UR50D"
-    # base_model: str = "dev_test_reinit_refactor_v1/checkpoint-100"
     tokenizer_path: str = "tokenizer_esm_genslm"
     output_path: str = "dev_test_reinit_refactor_v1"
     data_path: str = "/lambda_stor/homes/khippe/genslm_foundation/genome_data/mdh_sc23/fasta/mdh_natural_sequences.ffn"
@@ -70,17 +69,6 @@ def main():
     # in the model resize the input embedding layer and the MLM prediction head
     model.resize_model_vocab(len(tokenizer))
 
-    print("init success")
-
-    # TODO: During fine tuning or training from a checkpoint, this will restart the weights
-    #       ONly do if the len(tokenizer) is not the same as the embedding layer
-    # TODO: We should move this logic inside the model init, to insure proper weight initialization
-    # Inject new vocabulary (modifies model.config)
-    # if len(tokenizer) != model.config.vocab_size:
-    #     model.resize_token_embeddings(len(tokenizer))
-    #     # Make a new lm_head with uninitialized weights using the correct shape
-    #     model.lm_head = EsmLMHead(model.config)
-
     # Select the dataset type based on the file extension
     dset_class = HDF5Dataset if config.data_path.endswith(".h5") else FastaDataset
     train_dataset = dset_class(
@@ -103,17 +91,13 @@ def main():
     )
 
     # Attempt to load a checkpoint
-    # checkpoint = None
-    # if Path(args.output_dir).exists():
     checkpoint = get_last_checkpoint(args.output_dir)
-    # model_id = config.base_model if checkpoint is None else checkpoint
-
-    print("Training from checkpoint:", checkpoint)
+    if checkpoint is not None:
+        print("Training from checkpoint:", checkpoint)
 
     trainer.train(resume_from_checkpoint=checkpoint)
 
 
 if __name__ == "__main__":
     main()
-    # TODO: Setup checkpoint resume logic
     # TODO: Add validation dataset

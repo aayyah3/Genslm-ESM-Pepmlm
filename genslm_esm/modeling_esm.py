@@ -152,13 +152,16 @@ class EsmForContrastiveMaskedLM(EsmForMaskedLM):
         config.contrastive_temperature = contrastive_temperature
         config.contrastive_pooler = contrastive_pooler
 
-        # if config.compute_contrastive_loss:
+        # Only used if compute_contrastive_loss is True
         self.contrastive_head = EsmContrastiveProjectionHead(config)
 
         # Initialize weights and apply final processing
         self.post_init()
 
     def resize_model_vocab(self, new_vocab_size: int) -> None:
+        """Helper method to resize the model's input embeddings and output head for a new vocabulary size.
+        Only makes changes if the new vocabulary size is different from the current vocabulary size.
+        """
         # Inject new vocabulary (modifies config)
         if new_vocab_size != self.config.vocab_size:
             logger.warning(
