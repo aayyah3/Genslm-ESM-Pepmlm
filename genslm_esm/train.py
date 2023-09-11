@@ -40,7 +40,10 @@ class GenSLMTrainingConfig:
         # Setting this environment variable enables wandb logging
         if self.wandb_project:
             os.environ["WANDB_PROJECT"] = self.wandb_project
-            wandb.init(dir=self.output_path, resume=os.path.exists(self.output_path))
+            # Only resume a run if the output path already exists
+            resume = os.path.exists(self.output_path)
+            os.makedirs(self.output_path, exist_ok=True)
+            wandb.init(dir=self.output_path, resume=resume)
             wandb.config.update({"train_config": asdict(self)})
 
     def construct_dataset(self, file_path: str) -> Union[FastaDataset, HDF5Dataset]:
