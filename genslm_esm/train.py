@@ -22,9 +22,9 @@ class GenSLMTrainingConfig:
     base_model: str = "facebook/esm2_t6_8M_UR50D"
     tokenizer_path: str = "tokenizer_esm_genslm"
     output_path: str = "dev_test_reinit_refactor_v1"
-    train_data_path: str = "data/mdh/train.fasta"
-    valid_data_path: str = "data/mdh/valid.fasta"
-    # train_data_path: str = "/lambda_stor/homes/khippe/genslm_foundation/genome_data/curriculum_datasets/curriculum_2/curriculum_2_train.h5"
+    train_path: str = "data/mdh/train.fasta"
+    validation_path: str = "data/mdh/valid.fasta"
+    # train_path: str = "/lambda_stor/homes/khippe/genslm_foundation/genome_data/curriculum_datasets/curriculum_2/curriculum_2_train.h5"
 
     def __post_init__(self):
         if self.compute_contrastive_loss:
@@ -80,8 +80,8 @@ def main():
     model.resize_model_vocab(len(tokenizer))
 
     # Construct the train and validation datasets
-    train_dataset = config.construct_dataset(config.train_data_path)
-    eval_dataset = config.construct_dataset(config.valid_data_path)
+    train_dataset = config.construct_dataset(config.train_path)
+    eval_dataset = config.construct_dataset(config.validation_path)
 
     data_collator = GenSLMColatorForLanguageModeling(
         return_codon=config.compute_codon_loss,
