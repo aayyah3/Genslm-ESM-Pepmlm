@@ -88,7 +88,7 @@ class FirstPooler(EsmPooler):
 POOLER_DISPATCH = {"mean": MeanPooler, "first": FirstPooler}
 
 
-class ContrastiveProjectionHead(nn.Module):
+class EsmContrastiveProjectionHead(nn.Module):
     def __init__(self, config: ContrastiveEsmConfig) -> None:
         super().__init__()
         # The projection representions z are trained to become invariant to
@@ -141,23 +141,21 @@ class EsmForContrastiveMaskedLM(EsmForMaskedLM):
     def __init__(
         self,
         config: EsmConfig,
-        new_vocab_size: Optional[int] = None,
         compute_contrastive_loss: bool = False,
         contrastive_temperature: float = 0.1,
         contrastive_pooler: str = "mean",
     ):
         super().__init__(config)
-
         # Inject contrastive loss parameters into the config
         config.compute_contrastive_loss = compute_contrastive_loss
         config.contrastive_temperature = contrastive_temperature
         config.contrastive_pooler = contrastive_pooler
 
-        if new_vocab_size is not None:
-            self.resize_model_vocab(new_vocab_size)
-
-        if config.compute_contrastive_loss:
-            self.contrastive_head = ContrastiveProjectionHead(config)
+        #if config.compute_contrastive_loss:
+        self.contrastive_head = EsmContrastiveProjectionHead(config)
+        
+        # Initialize weights and apply final processing
+        self.post_init()
 
     def resize_model_vocab(self, new_vocab_size: int) -> None:
         # Inject new vocabulary (modifies config)
