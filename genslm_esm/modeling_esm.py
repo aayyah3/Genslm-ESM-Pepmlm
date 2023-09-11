@@ -153,23 +153,20 @@ class EsmForContrastiveMaskedLM(EsmForMaskedLM):
         config.contrastive_temperature = contrastive_temperature
         config.contrastive_pooler = contrastive_pooler
 
-        # Use default vocab size if not provided
-        if vocab_size is None:
-            vocab_size = config.vocab_size
-
-        # Inject new vocabulary (modifies config)
-        if vocab_size != config.vocab_size:
-            logger.warning(
-                "Resizing token embedding layer from {} to {}. This reinitializes the EsmLMHead and input embedding layer weights".format(
-                    config.vocab_size, vocab_size
-                )
-            )
-            self.resize_token_embeddings(vocab_size)
-            # Make a new lm_head with uninitialized weights using the correct shape
-            self.lm_head = EsmLMHead(config)
-
         if config.compute_contrastive_loss:
             self.contrastive_head = ContrastiveProjectionHead(config)
+
+    def resize_model_vocab(self, new_vocab_size: int) -> None:
+        # Inject new vocabulary (modifies config)
+        if new_vocab_size != self.config.vocab_size:
+            logger.warning(
+                "Resizing token embedding layer from {} to {}. This reinitializes the EsmLMHead and input embedding layer weights".format(
+                    self.config.vocab_size, new_vocab_size
+                )
+            )
+            self.resize_token_embeddings(new_vocab_size)
+            # Make a new lm_head with uninitialized weights using the correct shape
+            self.lm_head = EsmLMHead(self.config)
 
     def forward(
         self,

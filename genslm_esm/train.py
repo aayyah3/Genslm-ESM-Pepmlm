@@ -65,6 +65,9 @@ def main():
         contrastive_temperature=config.contrastive_temperature,
         contrastive_pooler=config.contrastive_pooler,
     )
+    # If the number of tokens in the tokenizer is different from the number of tokens
+    # in the model resize the input embedding layer and the MLM prediction head
+    model.resize_model_vocab(len(tokenizer))
 
     # TODO: During fine tuning or training from a checkpoint, this will restart the weights
     #       ONly do if the len(tokenizer) is not the same as the embedding layer
