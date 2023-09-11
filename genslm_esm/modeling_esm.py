@@ -8,8 +8,12 @@ from transformers.models.esm.modeling_esm import (
     EsmForMaskedLM,
     EsmPooler,
     MaskedLMOutput,
+    EsmLMHead,
 )
 from transformers.models.esm.configuration_esm import EsmConfig
+from transformers import logging
+
+logger = logging.get_logger(__name__)
 
 
 # TODO: Currently not used
@@ -137,6 +141,7 @@ class EsmForContrastiveMaskedLM(EsmForMaskedLM):
     def __init__(
         self,
         config: EsmConfig,
+        vocab_size: Optional[int] = None,
         compute_contrastive_loss: bool = False,
         contrastive_temperature: float = 0.1,
         contrastive_pooler: str = "mean",
@@ -147,6 +152,21 @@ class EsmForContrastiveMaskedLM(EsmForMaskedLM):
         config.compute_contrastive_loss = compute_contrastive_loss
         config.contrastive_temperature = contrastive_temperature
         config.contrastive_pooler = contrastive_pooler
+
+        # Use default vocab size if not provided
+        if vocab_size is None:
+            vocab_size = config.vocab_size
+
+        # Inject new vocabulary (modifies config)
+        if vocab_size != config.vocab_size:
+            logger.warning(
+                "Resizing token embedding layer from {} to {}. This reinitializes the EsmLMHead and input embedding layer weights".format(
+                    config.vocab_size, vocab_size
+                )
+            )
+            self.resize_token_embeddings(vocab_size)
+            # Make a new lm_head with uninitialized weights using the correct shape
+            self.lm_head = EsmLMHead(config)
 
         if config.compute_contrastive_loss:
             self.contrastive_head = ContrastiveProjectionHead(config)

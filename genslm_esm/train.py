@@ -60,6 +60,7 @@ def main():
     tokenizer = EsmTokenizer.from_pretrained(config.tokenizer_path)
     model = EsmForContrastiveMaskedLM.from_pretrained(
         config.base_model,
+        vocab_size=len(tokenizer),
         compute_contrastive_loss=config.compute_contrastive_loss,
         contrastive_temperature=config.contrastive_temperature,
         contrastive_pooler=config.contrastive_pooler,
@@ -69,9 +70,10 @@ def main():
     #       ONly do if the len(tokenizer) is not the same as the embedding layer
     # TODO: We should move this logic inside the model init, to insure proper weight initialization
     # Inject new vocabulary (modifies model.config)
-    model.resize_token_embeddings(len(tokenizer))
-    # Make a new lm_head with uninitialized weights using the correct shape
-    model.lm_head = EsmLMHead(model.config)
+    # if len(tokenizer) != model.config.vocab_size:
+    #     model.resize_token_embeddings(len(tokenizer))
+    #     # Make a new lm_head with uninitialized weights using the correct shape
+    #     model.lm_head = EsmLMHead(model.config)
 
     # Select the dataset type based on the file extension
     dset_class = HDF5Dataset if config.data_path.endswith(".h5") else FastaDataset
