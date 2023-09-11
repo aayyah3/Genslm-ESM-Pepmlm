@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+import os
+from dataclasses import dataclass, asdict
 from typing import Union
 
 from transformers import EsmTokenizer, Trainer, TrainingArguments
@@ -25,6 +26,7 @@ class GenSLMTrainingConfig:
     train_path: str = "data/mdh/train.fasta"
     validation_path: str = "data/mdh/valid.fasta"
     # train_path: str = "/lambda_stor/homes/khippe/genslm_foundation/genome_data/curriculum_datasets/curriculum_2/curriculum_2_train.h5"
+    wandb_project: str = "genslm-esm"  # Set to empty string to turn off wandb
 
     def __post_init__(self):
         if self.compute_contrastive_loss:
@@ -33,6 +35,14 @@ class GenSLMTrainingConfig:
             raise ValueError(
                 "At least one of return_codon or return_aminoacid must be True"
             )
+
+        # Setting this environment variable enables wandb logging
+        if self.wandb_project:
+            os.environ["WANDB_PROJECT"] = self.wandb_project
+            import wandb
+
+            # Add all fields to wandb config
+            wandb.config.update(asdict(self))
 
     def construct_dataset(self, file_path: str) -> Union[FastaDataset, HDF5Dataset]:
         dset_class = HDF5Dataset if file_path.endswith(".h5") else FastaDataset
@@ -63,6 +73,7 @@ def main():
         save_steps=50,
         fp16=True,
         push_to_hub=False,
+        report_to="wandb" if config.wandb_project else None,
         remove_unused_columns=False,  # This skips underlying logic in Trainer which modifies the data_collator
         dataloader_num_workers=4,  # Defaults to 0, may want to increase for faster data loading
     )
