@@ -1,4 +1,5 @@
 import os
+import wandb
 from dataclasses import dataclass, asdict
 from typing import Union
 
@@ -39,10 +40,6 @@ class GenSLMTrainingConfig:
         # Setting this environment variable enables wandb logging
         if self.wandb_project:
             os.environ["WANDB_PROJECT"] = self.wandb_project
-            import wandb
-
-            # Add all fields to wandb config
-            wandb.config.update(asdict(self))
 
     def construct_dataset(self, file_path: str) -> Union[FastaDataset, HDF5Dataset]:
         dset_class = HDF5Dataset if file_path.endswith(".h5") else FastaDataset
@@ -77,6 +74,10 @@ def main():
         remove_unused_columns=False,  # This skips underlying logic in Trainer which modifies the data_collator
         dataloader_num_workers=4,  # Defaults to 0, may want to increase for faster data loading
     )
+
+    # Add configuration to wandb log
+    if config.wandb_project:
+        wandb.config.update(asdict(config))
 
     tokenizer = EsmTokenizer.from_pretrained(config.tokenizer_path)
     model = EsmForContrastiveMaskedLM.from_pretrained(
