@@ -1,5 +1,6 @@
 import random
 import re
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Union
@@ -144,6 +145,9 @@ def random_split_fasta(
     split_idx = int(len(sequences) * split)
     write_fasta(sequences[:split_idx], output_dir / "train.fasta")
     write_fasta(sequences[split_idx:], output_dir / "valid.fasta")
+
+    # Copy the original fasta file to the output directory for reference
+    shutil.copy(input_fasta, output_dir)
 
 
 class FastaDataset(Dataset):
