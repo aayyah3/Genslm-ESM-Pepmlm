@@ -40,8 +40,8 @@ class GenSLMTrainingConfig:
         # Setting this environment variable enables wandb logging
         if self.wandb_project:
             os.environ["WANDB_PROJECT"] = self.wandb_project
-            wandb.init()
-            wandb.config.update(asdict(self))
+            wandb.init(dir=self.output_path, resume=os.path.exists(self.output_path))
+            wandb.config.update({"train_config": asdict(self)})
 
     def construct_dataset(self, file_path: str) -> Union[FastaDataset, HDF5Dataset]:
         dset_class = HDF5Dataset if file_path.endswith(".h5") else FastaDataset
