@@ -1,9 +1,9 @@
 import re
-import h5py
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, List, Union
 
+import h5py
 from torch.utils.data import Dataset
 from transformers import BatchEncoding, DataCollatorForLanguageModeling
 

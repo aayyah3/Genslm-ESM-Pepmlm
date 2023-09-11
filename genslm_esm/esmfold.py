@@ -3,13 +3,15 @@ This code was adapted from the EsmFold tutorial notebook, which can be found her
 https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/protein_folding.ipynb#scrollTo=1c9de19e
 """
 
-import torch
-from pathlib import Path
-from tqdm import tqdm
-from typing import List
 from argparse import ArgumentParser
+from pathlib import Path
+from typing import List
+
+import torch
 from torch.utils.data import DataLoader, Dataset
+from tqdm import tqdm
 from transformers import EsmForProteinFolding
+
 from genslm_esm.dataset import read_fasta
 
 

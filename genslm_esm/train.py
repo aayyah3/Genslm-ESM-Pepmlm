@@ -1,15 +1,13 @@
 from dataclasses import dataclass
-from pathlib import Path
-from transformers import Trainer, TrainingArguments, EsmTokenizer
+
+from transformers import EsmTokenizer, Trainer, TrainingArguments
 from transformers.trainer_utils import get_last_checkpoint
-from transformers.models.esm.modeling_esm import EsmLMHead
 
 from genslm_esm.dataset import (
     FastaDataset,
-    HDF5Dataset,
     GenSLMColatorForLanguageModeling,
+    HDF5Dataset,
 )
-
 from genslm_esm.modeling_esm import EsmForContrastiveMaskedLM
 
 
@@ -21,7 +19,7 @@ class GenSLMTrainingConfig:
     contrastive_temperature: float = 0.1
     contrastive_pooler: str = "mean"
     base_model: str = "facebook/esm2_t6_8M_UR50D"
-    #base_model: str = "dev_test_reinit_refactor_v1/checkpoint-100"
+    # base_model: str = "dev_test_reinit_refactor_v1/checkpoint-100"
     tokenizer_path: str = "tokenizer_esm_genslm"
     output_path: str = "dev_test_reinit_refactor_v1"
     data_path: str = "/lambda_stor/homes/khippe/genslm_foundation/genome_data/mdh_sc23/fasta/mdh_natural_sequences.ffn"
@@ -38,8 +36,6 @@ class GenSLMTrainingConfig:
 
 def main():
     config = GenSLMTrainingConfig()
-
-    
 
     # TODO: This would be a good option to try for more efficient packing: group_by_length
     args = TrainingArguments(
@@ -62,7 +58,6 @@ def main():
         dataloader_num_workers=4,  # Defaults to 0, may want to increase for faster data loading
     )
 
-
     tokenizer = EsmTokenizer.from_pretrained(config.tokenizer_path)
     model = EsmForContrastiveMaskedLM.from_pretrained(
         config.base_model,
@@ -74,7 +69,6 @@ def main():
     # If the number of tokens in the tokenizer is different from the number of tokens
     # in the model resize the input embedding layer and the MLM prediction head
     model.resize_model_vocab(len(tokenizer))
-
 
     print("init success")
 
@@ -107,15 +101,15 @@ def main():
     trainer = Trainer(
         model=model, args=args, data_collator=data_collator, train_dataset=train_dataset
     )
- 
+
     # Attempt to load a checkpoint
-    #checkpoint = None
-    #if Path(args.output_dir).exists():
+    # checkpoint = None
+    # if Path(args.output_dir).exists():
     checkpoint = get_last_checkpoint(args.output_dir)
-    #model_id = config.base_model if checkpoint is None else checkpoint
+    # model_id = config.base_model if checkpoint is None else checkpoint
 
     print("Training from checkpoint:", checkpoint)
-    
+
     trainer.train(resume_from_checkpoint=checkpoint)
 
 

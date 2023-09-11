@@ -1,6 +1,6 @@
 import numpy as np
+from numba import jit, prange
 from numba.typed import List as numbaList
-from numba import prange, jit
 
 
 # This gets rid of numba type warnings

@@ -1,17 +1,18 @@
 """Adapted PyTorch ESM model."""
 # braceal 08/31/23: I have modified the original ESM Huggingface model to add a contrastive loss head.
 from typing import Optional, Tuple, Union
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from transformers import logging
+from transformers.models.esm.configuration_esm import EsmConfig
 from transformers.models.esm.modeling_esm import (
     EsmForMaskedLM,
+    EsmLMHead,
     EsmPooler,
     MaskedLMOutput,
-    EsmLMHead,
 )
-from transformers.models.esm.configuration_esm import EsmConfig
-from transformers import logging
 
 logger = logging.get_logger(__name__)
 
@@ -25,7 +26,7 @@ class ContrastiveEsmConfig(EsmConfig):
         compute_contrastive_loss: bool = False,
         contrastive_temperature: float = 0.1,
         contrastive_pooler: str = "mean",
-        **kwargs
+        **kwargs,
     ):
         super().__init__(**kwargs)
         self.compute_contrastive_loss = compute_contrastive_loss
@@ -151,9 +152,9 @@ class EsmForContrastiveMaskedLM(EsmForMaskedLM):
         config.contrastive_temperature = contrastive_temperature
         config.contrastive_pooler = contrastive_pooler
 
-        #if config.compute_contrastive_loss:
+        # if config.compute_contrastive_loss:
         self.contrastive_head = EsmContrastiveProjectionHead(config)
-        
+
         # Initialize weights and apply final processing
         self.post_init()
 

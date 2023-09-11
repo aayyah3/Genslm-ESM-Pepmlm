@@ -1,8 +1,9 @@
 from argparse import ArgumentParser
+from pathlib import Path
+
+import pandas as pd
 import weightwatcher as ww
 from transformers import EsmForMaskedLM
-from pathlib import Path
-import pandas as pd
 
 
 def main(model_path: Path, output_path: Path) -> None:
