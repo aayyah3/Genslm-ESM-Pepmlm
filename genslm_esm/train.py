@@ -101,4 +101,3 @@ if __name__ == "__main__":
     main()
     # TODO: Setup checkpoint resume logic
     # TODO: Add validation dataset
-    # TODO: Consider adding a loss weight to balance contrastive and MLM losses
