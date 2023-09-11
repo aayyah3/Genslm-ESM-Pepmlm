@@ -129,12 +129,21 @@ def random_split_fasta(
     input_fasta: PathLike, output_dir: PathLike, split: float = 0.8, seed: int = 0
 ) -> None:
     """Randomly split a fasta file into train and validation fasta file."""
+    # Read the input file
     sequences = read_fasta(input_fasta)
+
+    # Shuffle the sequences
     random.seed(seed)
     random.shuffle(sequences)
+
+    # Create the output directory
+    output_dir = Path(output_dir)
+    output_dir.mkdir(exist_ok=True)
+
+    # Write the train and validation fasta files
     split_idx = int(len(sequences) * split)
-    write_fasta(sequences[:split_idx], Path(output_dir) / "train.fasta")
-    write_fasta(sequences[split_idx:], Path(output_dir) / "valid.fasta")
+    write_fasta(sequences[:split_idx], output_dir / "train.fasta")
+    write_fasta(sequences[split_idx:], output_dir / "valid.fasta")
 
 
 class FastaDataset(Dataset):
