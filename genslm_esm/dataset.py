@@ -1,3 +1,4 @@
+import random
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -6,6 +7,8 @@ from typing import Any, Dict, List, Union
 import h5py
 from torch.utils.data import Dataset
 from transformers import BatchEncoding, DataCollatorForLanguageModeling
+
+PathLike = Union[str, Path]
 
 # Stop codons map to empty strings ""
 translation_table = {
@@ -98,7 +101,7 @@ class Sequence:
         return Sequence(sequence=amino_acid_seq.replace(" ", ""), tag=self.tag)
 
 
-def read_fasta(fasta_file: str) -> List[Sequence]:
+def read_fasta(fasta_file: PathLike) -> List[Sequence]:
     """Reads fasta file sequences and description tags into dataclass."""
     text = Path(fasta_file).read_text()
     pattern = re.compile("^>", re.MULTILINE)
@@ -113,13 +116,25 @@ def read_fasta(fasta_file: str) -> List[Sequence]:
 
 
 def write_fasta(
-    sequences: Union[Sequence, List[Sequence]], fasta_file: str, mode: str = "w"
+    sequences: Union[Sequence, List[Sequence]], fasta_file: PathLike, mode: str = "w"
 ) -> None:
     """Write or append sequences to a fasta file."""
     seqs = [sequences] if isinstance(sequences, Sequence) else sequences
     with open(fasta_file, mode) as f:
         for seq in seqs:
             f.write(f">{seq.tag}\n{seq.sequence}\n")
+
+
+def random_split_fasta(
+    input_fasta: PathLike, output_dir: PathLike, split: float = 0.8, seed: int = 0
+) -> None:
+    """Randomly split a fasta file into train and validation fasta file."""
+    sequences = read_fasta(input_fasta)
+    random.seed(seed)
+    random.shuffle(sequences)
+    split_idx = int(len(sequences) * split)
+    write_fasta(sequences[:split_idx], Path(output_dir) / "train.fasta")
+    write_fasta(sequences[split_idx:], Path(output_dir) / "valid.fasta")
 
 
 class FastaDataset(Dataset):
@@ -288,3 +303,21 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
         elif self.return_aminoacid:
             return self.torch_call_helper([e["aminoacid"] for e in examples])
         assert False
+
+
+def random_split_cli() -> None:
+    """Command line utility to split a fasta file into train/validion sets."""
+    from argparse import ArgumentParser
+
+    parser = ArgumentParser()
+    parser.add_argument("-f", "--fasta_path", type=Path, required=True)
+    parser.add_argument("-o", "--output_path", type=Path, required=True)
+    parser.add_argument("--split", type=float, default=0.8)
+    parser.add_argument("--seed", type=int, default=0)
+    args = parser.parse_args()
+
+    random_split_fasta(args.fasta_path, args.output_path, args.split, args.seed)
+
+
+if __name__ == "__main__":
+    random_split_cli()
