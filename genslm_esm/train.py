@@ -50,9 +50,9 @@ def main():
     args = TrainingArguments(
         output_dir=config.output_path,
         per_device_train_batch_size=64,
-        # per_device_eval_batch_size=128,
-        # evaluation_strategy="steps",
-        # eval_steps=50,
+        per_device_eval_batch_size=128,
+        evaluation_strategy="steps",
+        eval_steps=50,
         logging_steps=50,
         gradient_accumulation_steps=2,
         num_train_epochs=20,
