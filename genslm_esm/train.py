@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Union
 
 from transformers import EsmTokenizer, Trainer, TrainingArguments
 from transformers.trainer_utils import get_last_checkpoint
@@ -21,8 +22,9 @@ class GenSLMTrainingConfig:
     base_model: str = "facebook/esm2_t6_8M_UR50D"
     tokenizer_path: str = "tokenizer_esm_genslm"
     output_path: str = "dev_test_reinit_refactor_v1"
-    data_path: str = "/lambda_stor/homes/khippe/genslm_foundation/genome_data/mdh_sc23/fasta/mdh_natural_sequences.ffn"
-    # data_path: str = "/lambda_stor/homes/khippe/genslm_foundation/genome_data/curriculum_datasets/curriculum_2/curriculum_2_train.h5"
+    train_data_path: str = "data/mdh/train.fasta"
+    valid_data_path: str = "data/mdh/valid.fasta"
+    # train_data_path: str = "/lambda_stor/homes/khippe/genslm_foundation/genome_data/curriculum_datasets/curriculum_2/curriculum_2_train.h5"
 
     def __post_init__(self):
         if self.compute_contrastive_loss:
@@ -31,6 +33,14 @@ class GenSLMTrainingConfig:
             raise ValueError(
                 "At least one of return_codon or return_aminoacid must be True"
             )
+
+    def construct_dataset(self, file_path: str) -> Union[FastaDataset, HDF5Dataset]:
+        dset_class = HDF5Dataset if file_path.endswith(".h5") else FastaDataset
+        return dset_class(
+            file_path=file_path,
+            return_codon=self.compute_codon_loss,
+            return_aminoacid=self.compute_aminoacid_loss,
+        )
 
 
 def main():
@@ -69,13 +79,9 @@ def main():
     # in the model resize the input embedding layer and the MLM prediction head
     model.resize_model_vocab(len(tokenizer))
 
-    # Select the dataset type based on the file extension
-    dset_class = HDF5Dataset if config.data_path.endswith(".h5") else FastaDataset
-    train_dataset = dset_class(
-        file_path=config.data_path,
-        return_codon=config.compute_codon_loss,
-        return_aminoacid=config.compute_aminoacid_loss,
-    )
+    # Construct the train and validation datasets
+    train_dataset = config.construct_dataset(config.train_data_path)
+    eval_dataset = config.construct_dataset(config.valid_data_path)
 
     data_collator = GenSLMColatorForLanguageModeling(
         return_codon=config.compute_codon_loss,
@@ -87,7 +93,11 @@ def main():
     )
 
     trainer = Trainer(
-        model=model, args=args, data_collator=data_collator, train_dataset=train_dataset
+        model=model,
+        args=args,
+        data_collator=data_collator,
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
     )
 
     # Attempt to load a checkpoint
@@ -100,5 +110,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-    # TODO: Add validation dataset
     # TODO: Enable wandb logging
