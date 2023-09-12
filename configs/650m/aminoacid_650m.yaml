@@ -1,0 +1,11 @@
+compute_codon_loss: false
+compute_aminoacid_loss: true
+compute_contrastive_loss: false
+contrastive_temperature: 0.1
+contrastive_pooler: mean
+base_model: facebook/esm2_t33_650M_UR50D
+tokenizer_path: tokenizer_esm_genslm
+output_path: production_runs/aminoacid_650m
+train_path: data/mdh/train.fasta
+validation_path: data/mdh/valid.fasta
+wandb_project: genslm-esm

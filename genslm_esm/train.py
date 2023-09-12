@@ -1,8 +1,11 @@
 import os
-import wandb
-from dataclasses import dataclass, asdict
+from argparse import ArgumentParser
+from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Union
 
+import wandb
+import yaml
 from transformers import EsmTokenizer, Trainer, TrainingArguments
 from transformers.trainer_utils import get_last_checkpoint
 
@@ -42,9 +45,16 @@ class GenSLMTrainingConfig:
             os.environ["WANDB_PROJECT"] = self.wandb_project
             # Only resume a run if the output path already exists
             resume = os.path.exists(self.output_path)
-            os.makedirs(self.output_path, exist_ok=True)
+            Path(self.output_path).mkdir(exist_ok=True, parents=True)
             wandb.init(dir=self.output_path, resume=resume)
             wandb.config.update({"train_config": asdict(self)})
+
+        # Create the output directory if it doesn't exist
+        Path(self.output_path).mkdir(exist_ok=True, parents=True)
+
+        # Log the config to a yaml file
+        with open(os.path.join(self.output_path, "train_config.yaml"), "w") as fp:
+            yaml.dump(asdict(self), fp)
 
     def construct_dataset(self, file_path: str) -> Union[FastaDataset, HDF5Dataset]:
         dset_class = HDF5Dataset if file_path.endswith(".h5") else FastaDataset
@@ -56,7 +66,12 @@ class GenSLMTrainingConfig:
 
 
 def main():
-    config = GenSLMTrainingConfig()
+    # Parse a yaml file to get the training config
+    parser = ArgumentParser()
+    parser.add_argument("--config", type=str, required=True)
+    args = parser.parse_args()
+    with open(args.config) as fp:
+        config = GenSLMTrainingConfig(**yaml.safe_load(fp))
 
     # TODO: This would be a good option to try for more efficient packing: group_by_length
     args = TrainingArguments(
