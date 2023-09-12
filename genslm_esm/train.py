@@ -33,7 +33,7 @@ class GenSLMTrainingConfig:
     train_path: str = "data/mdh/train.fasta"
     validation_path: str = "data/mdh/valid.fasta"
     # train_path: str = "/lambda_stor/homes/khippe/genslm_foundation/genome_data/curriculum_datasets/curriculum_2/curriculum_2_train.h5"
-    wandb_project: str = "genslm-esm"  # Set to empty string to turn off wandb
+    wandb_project: str = ""  # Set to empty string to turn off wandb
 
     def __post_init__(self):
         if self.compute_contrastive_loss:
