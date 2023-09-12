@@ -19,6 +19,9 @@ from genslm_esm.modeling_esm import EsmForContrastiveMaskedLM
 
 @dataclass
 class GenSLMTrainingConfig:
+    num_train_epochs: int = 20
+    per_device_train_batch_size: int = 64
+    per_device_eval_batch_size: int = 128
     compute_codon_loss: bool = True
     compute_aminoacid_loss: bool = True
     compute_contrastive_loss: bool = True
@@ -76,13 +79,13 @@ def main():
     # TODO: This would be a good option to try for more efficient packing: group_by_length
     args = TrainingArguments(
         output_dir=config.output_path,
-        per_device_train_batch_size=64,
-        per_device_eval_batch_size=128,
+        per_device_train_batch_size=config.per_device_train_batch_size,
+        per_device_eval_batch_size=config.per_device_eval_batch_size,
         evaluation_strategy="steps",
         eval_steps=50,
         logging_steps=50,
         gradient_accumulation_steps=2,
-        num_train_epochs=20,
+        num_train_epochs=config.num_train_epochs,
         weight_decay=0.01,
         warmup_steps=1_000,
         lr_scheduler_type="cosine",

@@ -1,3 +1,4 @@
+num_train_epochs: 50
 compute_codon_loss: true
 compute_aminoacid_loss: false
 compute_contrastive_loss: false
