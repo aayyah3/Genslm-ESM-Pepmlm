@@ -12,4 +12,4 @@ tokenizer_path: tokenizer_esm_genslm
 output_path: nf_production_runs/nf8_joint_35m
 train_path: /lambda_stor/homes/khippe/genslm_foundation/genome_data/curriculum_datasets/curriculum_8/curriculum_8_train.h5
 validation_path: /lambda_stor/homes/khippe/genslm_foundation/genome_data/curriculum_datasets/curriculum_8/curriculum_8_val.h5
-#wandb_project: genslm-esm
+wandb_project: genslm-esm-nf-experiments
