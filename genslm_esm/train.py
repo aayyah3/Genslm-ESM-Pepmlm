@@ -22,6 +22,7 @@ class GenSLMTrainingConfig:
     num_train_epochs: int = 20
     per_device_train_batch_size: int = 64
     per_device_eval_batch_size: int = 128
+    gradient_accumulation_steps: int = 2
     compute_codon_loss: bool = True
     compute_aminoacid_loss: bool = True
     compute_contrastive_loss: bool = True
@@ -84,7 +85,7 @@ def main():
         evaluation_strategy="steps",
         eval_steps=200,
         logging_steps=200,
-        gradient_accumulation_steps=2,
+        gradient_accumulation_steps=config.gradient_accumulation_steps,
         num_train_epochs=config.num_train_epochs,
         weight_decay=0.01,
         warmup_steps=1_000,
