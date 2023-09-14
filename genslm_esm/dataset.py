@@ -5,7 +5,7 @@ import shutil
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Union
+from typing import Dict, List, Union
 
 import h5py
 from torch.utils.data import Dataset
@@ -296,9 +296,9 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
             return_special_tokens_mask=self.train_mode and self.mlm,
         )
 
-    def torch_call_helper(self, batch: BatchEncoding) -> BatchEncoding:
+    def torch_call_helper(self, sequences: List[str]) -> BatchEncoding:
         # First, tokenize the batch
-        batch = self.tokenize(batch)
+        batch = self.tokenize(sequences)
 
         # We only need to mask tokens if we are training
         if not self.train_mode:
@@ -317,7 +317,7 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
             batch["labels"] = labels
         return batch
 
-    def torch_call(self, examples: List[Dict[str, BatchEncoding]]) -> Dict[str, Any]:
+    def torch_call(self, examples: List[Dict[str, str]]) -> BatchEncoding:
         if self.return_codon and self.return_aminoacid:
             # The first half of the batch is the codon sequences
             # and the second half is the amino acid sequences
@@ -329,21 +329,3 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
         elif self.return_aminoacid:
             return self.torch_call_helper([e["aminoacid"] for e in examples])
         assert False
-
-
-def random_split_cli() -> None:
-    """Command line utility to split a fasta file into train/validion sets."""
-    from argparse import ArgumentParser
-
-    parser = ArgumentParser()
-    parser.add_argument("-f", "--fasta_path", type=Path, required=True)
-    parser.add_argument("-o", "--output_path", type=Path, required=True)
-    parser.add_argument("--split", type=float, default=0.8)
-    parser.add_argument("--seed", type=int, default=0)
-    args = parser.parse_args()
-
-    random_split_fasta(args.fasta_path, args.output_path, args.split, args.seed)
-
-
-if __name__ == "__main__":
-    random_split_cli()

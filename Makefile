@@ -13,7 +13,7 @@ install:
 	pip install -U pip setuptools wheel
 	pip install -r requirements/dev.txt
 	pip install -r requirements/requirements.txt
-	#pip install -e .
+	pip install -e .
 
 .PHONY: format
 format:
