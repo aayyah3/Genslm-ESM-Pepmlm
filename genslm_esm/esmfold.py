@@ -26,7 +26,7 @@ class SequenceDataset(Dataset):
         return self.sequences[idx]
 
 
-def main(fasta_file: str, output_dir: str, batch_size: int) -> None:
+def main(fasta_file: str, output_dir: Path, batch_size: int) -> None:
     # Load the model
     model = EsmForProteinFolding.from_pretrained(
         "facebook/esmfold_v1", low_cpu_mem_usage=True
@@ -45,8 +45,7 @@ def main(fasta_file: str, output_dir: str, batch_size: int) -> None:
     dataloader = DataLoader(dataset, batch_size=batch_size)
 
     # Setup output directory
-    output_dir = Path(output_dir)
-    Path(output_dir).mkdir(exist_ok=True)
+    output_dir.mkdir(exist_ok=True)
 
     sequence_idx = 0
 
@@ -68,7 +67,7 @@ if __name__ == "__main__":
         "-f", "--fasta_file", required=True, help="Amino acid sequences in fasta format"
     )
     parser.add_argument(
-        "-o", "--output_dir", required=True, help="Folding output directory"
+        "-o", "--output_dir", type=Path, required=True, help="Folding output directory"
     )
     parser.add_argument(
         "-b", "--batch_size", default=1, type=int, help="Sequences to fold at once"
