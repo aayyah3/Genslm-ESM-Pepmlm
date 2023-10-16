@@ -119,13 +119,13 @@ def generate_embeddings(
         help="The path to the model to use (or ESM Huggingface model name).",
     ),
     return_aminoacid: bool = typer.Option(
-        ...,
+        False,
         "--return_aminoacid",
         "-a",
         help="Whether to return the amino acid embeddings.",
     ),
     return_codon: bool = typer.Option(
-        ...,
+        False,
         "--return_codon",
         "-c",
         help="Whether to return the codon embeddings.",
