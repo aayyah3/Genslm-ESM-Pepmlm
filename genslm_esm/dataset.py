@@ -166,7 +166,7 @@ def random_split_fasta(
 class FastaDataset(Dataset):
     def __init__(
         self,
-        file_path: str,
+        file_path: PathLike,
         return_codon: bool = True,
         return_aminoacid: bool = False,
     ) -> None:
@@ -181,7 +181,7 @@ class FastaDataset(Dataset):
             group_codons(seq) for seq in dna_sequenes if len(seq) % 3 == 0
         ]
 
-    def read_fasta_only_seq(self, fasta_file: str) -> List[str]:
+    def read_fasta_only_seq(self, fasta_file: PathLike) -> List[str]:
         """Reads fasta file sequences without description tag."""
         text = Path(fasta_file).read_text()
         pattern = re.compile("^>", re.MULTILINE)

@@ -60,6 +60,94 @@ def write_aminoacid_fasta(
     write_fasta(amino_acid_sequences, output_path)
 
 
+@app.command()
+def gather_fastas(
+    fasta_glob: str = typer.Option(
+        ...,
+        "--fasta_glob",
+        "-f",
+        help="A glob pattern specifiying several fasta files.",
+    ),
+    output_path: Path = typer.Option(
+        ...,
+        "--output_path",
+        "-o",
+        help="The fasta file containing the gathered sequences.",
+    ),
+) -> None:
+    """Utility to gather many fasta files into a single large one."""
+    from genslm_esm.dataset import read_fasta, write_fasta
+
+    sequences = []
+    for fasta_file in Path().glob(fasta_glob):
+        sequences.extend(read_fasta(fasta_file))
+    write_fasta(sequences, output_path)
+
+
+@app.command()
+def generate_embeddings(
+    fasta_path: Path = typer.Option(
+        ...,
+        "--fasta_path",
+        "-f",
+        help="The fasta file containing nucleotide gene sequences.",
+    ),
+    output_path: Path = typer.Option(
+        ...,
+        "--output_path",
+        "-o",
+        help="The numpy (.npy) file containing the sequence embeddings."
+        "The shape of the array is (num_sequences, embedding_size).",
+    ),
+    tokenizer_path: Path = typer.Option(
+        ...,
+        "--tokenizer_path",
+        "-t",
+        help="The path to the tokenizer to use (or ESM Huggingface model name).",
+    ),
+    model_path: Path = typer.Option(
+        ...,
+        "--model_path",
+        "-m",
+        help="The path to the model to use (or ESM Huggingface model name).",
+    ),
+    return_aminoacid: bool = typer.Option(
+        True,
+        "--return_aminoacid",
+        "-a",
+        help="Whether to return the amino acid embeddings.",
+    ),
+    return_codon: bool = typer.Option(
+        False,
+        "--return_codon",
+        "-c",
+        help="Whether to return the codon embeddings.",
+    ),
+    batch_size: int = typer.Option(
+        512,
+        "--batch_size",
+        "-b",
+        help="The batch size to use when computing embeddings.",
+    ),
+) -> None:
+    """Utility to generate sequence embeddings given an input fasta file."""
+    import numpy as np
+
+    from genslm_esm.embedding import embedding_inference
+
+    embeddings = embedding_inference(
+        tokenizer_path=tokenizer_path,
+        model_path=model_path,
+        fasta_path=fasta_path,
+        return_codon=return_codon,
+        return_aminoacid=return_aminoacid,
+        batch_size=batch_size,
+    )
+
+    # Save the embeddings to disk
+    np.save(output_path, embeddings)
+
+
 def main() -> None:
     """Entry point for CLI."""
     app()
