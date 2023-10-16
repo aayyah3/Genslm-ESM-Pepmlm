@@ -62,10 +62,16 @@ def write_aminoacid_fasta(
 
 @app.command()
 def gather_fastas(
-    fasta_glob: str = typer.Option(
+    fasta_dir: Path = typer.Option(
         ...,
-        "--fasta_glob",
+        "--fasta_dir",
         "-f",
+        help="The directory containing fasta files to gather.",
+    ),
+    glob_pattern: str = typer.Option(
+        "*.fasta",
+        "--glob",
+        "-g",
         help="A glob pattern specifiying several fasta files.",
     ),
     output_path: Path = typer.Option(
@@ -79,7 +85,7 @@ def gather_fastas(
     from genslm_esm.dataset import read_fasta, write_fasta
 
     sequences = []
-    for fasta_file in Path().glob(fasta_glob):
+    for fasta_file in fasta_dir.glob(glob_pattern):
         sequences.extend(read_fasta(fasta_file))
     write_fasta(sequences, output_path)
 
