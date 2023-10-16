@@ -119,13 +119,13 @@ def generate_embeddings(
         help="The path to the model to use (or ESM Huggingface model name).",
     ),
     return_aminoacid: bool = typer.Option(
-        True,
+        ...,
         "--return_aminoacid",
         "-a",
         help="Whether to return the amino acid embeddings.",
     ),
     return_codon: bool = typer.Option(
-        False,
+        ...,
         "--return_codon",
         "-c",
         help="Whether to return the codon embeddings.",
@@ -141,6 +141,15 @@ def generate_embeddings(
     import numpy as np
 
     from genslm_esm.embedding import embedding_inference
+
+    if not return_codon and not return_aminoacid:
+        raise ValueError(
+            "At least one of return_codon and return_aminoacid must be True."
+        )
+    if return_codon and return_aminoacid:
+        raise ValueError("Only one of return_codon and return_aminoacid can be True.")
+
+    print(f"Returning {'codon' if return_codon else 'amino acid'} embeddings.")
 
     embeddings = embedding_inference(
         tokenizer_path=tokenizer_path,
