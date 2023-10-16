@@ -83,9 +83,10 @@ def gather_fastas(
 ) -> None:
     """Utility to gather many fasta files into a single large one."""
     from genslm_esm.dataset import read_fasta, write_fasta
+    from tqdm import tqdm
 
     sequences = []
-    for fasta_file in fasta_dir.glob(glob_pattern):
+    for fasta_file in tqdm(fasta_dir.glob(glob_pattern)):
         sequences.extend(read_fasta(fasta_file))
     write_fasta(sequences, output_path)
 
