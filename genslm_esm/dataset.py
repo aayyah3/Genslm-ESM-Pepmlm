@@ -217,7 +217,7 @@ class FastaDataset(Dataset):
 class FastaAminoAcidDataset(FastaDataset):
     """Assumes the fasta file contains amino acid sequences."""
 
-    def __init__(self, file_path: str) -> None:
+    def __init__(self, file_path: PathLike) -> None:
         self.sequences = self.read_fasta_only_seq(file_path)
 
     def __getitem__(self, idx: int) -> Dict[str, str]:

@@ -130,6 +130,11 @@ def generate_embeddings(
         "-c",
         help="Whether to return the codon embeddings.",
     ),
+    fasta_contains_aminoacid: bool = typer.Option(
+        False,
+        "--fasta_contains_aminoacid",
+        help="Whether the fasta file contains amino acid sequences.",
+    ),
     batch_size: int = typer.Option(
         512,
         "--batch_size",
@@ -158,6 +163,7 @@ def generate_embeddings(
         return_codon=return_codon,
         return_aminoacid=return_aminoacid,
         batch_size=batch_size,
+        fasta_contains_aminoacid=fasta_contains_aminoacid,
     )
 
     # Save the embeddings to disk
