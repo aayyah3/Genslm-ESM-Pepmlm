@@ -219,16 +219,12 @@ def collate_checkpoints(
         # Print the best checkpoint
         print(f"Best checkpoint at {best_loss} eval loss: {best_ckpt}")
 
-    # Copy the best checkpoints to the output directory
+    # Collate the runs and there best checkpoints into a single directory
     output_dir.mkdir(exist_ok=True)
     for best_ckpt in best_ckpts:
         # Make an output directory for each best checkpoint
         original_train_output_dir = best_ckpt.parent
         new_train_output_dir = output_dir / original_train_output_dir.name
-        new_train_output_dir.mkdir(exist_ok=True)
-
-        # Copy the best checkpoint
-        shutil.copytree(best_ckpt, new_train_output_dir / best_ckpt.name)
 
         # Copy any extra files or folders from the original training output directory
         shutil.copytree(
@@ -236,6 +232,9 @@ def collate_checkpoints(
             new_train_output_dir,
             ignore=shutil.ignore_patterns("checkpoint-*"),
         )
+
+        # Copy the best checkpoint
+        shutil.copytree(best_ckpt, new_train_output_dir / best_ckpt.name)
 
 
 def main() -> None:
