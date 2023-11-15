@@ -18,6 +18,7 @@ def best_checkpoint(output_dir: Path) -> Tuple[float, Path]:
     # Get the checkpoint directories in order
     ckpt_dirs = list(Path(output_dir).glob("checkpoint-*"))
     ckpt_dirs = list(sorted(ckpt_dirs, key=lambda x: int(str(x).split("-")[1])))
+    ckpt_steps = [int(str(x).split("-")[1]) for x in ckpt_dirs]
     last_ckpt = ckpt_dirs[-1]
 
     # Load the trainer state wih the full log history
@@ -34,6 +35,11 @@ def best_checkpoint(output_dir: Path) -> Tuple[float, Path]:
     best_ind = np.argmin(eval_losses)
     best_step = steps[best_ind]
     best_loss = eval_losses[best_ind]
+
+    # Since checkpoint report steps are not necessarily the same as eval steps,
+    # we need to find the closest checkpoint report step to the best eval step.
+    best_step = ckpt_steps[np.argmin(np.abs(np.array(ckpt_steps) - best_step))]
+
     best_ckpt = output_dir / f"checkpoint-{best_step}"
 
     return best_loss, best_ckpt
