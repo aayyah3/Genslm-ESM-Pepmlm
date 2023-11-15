@@ -16,3 +16,8 @@ genslm-esm write-aminoacid-fasta -f data/mdh/valid.fasta -o data/mdh/valid_amino
 ```console
 genslm-esm random-split-fasta -f data/mdh/mdh_natural_sequences.fnn -o data/mdh/
 ```
+
+### Get the best checkpoint according to the validation loss
+```console
+genslm-esm best-checkpoint --train_output_dir <training_dir>
+```

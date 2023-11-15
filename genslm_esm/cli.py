@@ -173,43 +173,69 @@ def generate_embeddings(
 
 @app.command()
 def best_checkpoint(
-    output_dir: Path = typer.Option(
+    train_output_dir: Path = typer.Option(
         ...,
-        "--output_dir",
+        "--train_output_dir",
         "-o",
         help="The directory containing the training run checkpoints.",
     ),
 ) -> None:
     """Utility to report the best checkpoint from a training run (measured by smallest eval_loss)."""
-    from pathlib import Path
+    from genslm_esm.utils import best_checkpoint
 
-    import numpy as np
-    from transformers.trainer_callback import TrainerState
-
-    # Get the checkpoint directories in order
-    ckpt_dirs = list(Path(output_dir).glob("checkpoint-*"))
-    ckpt_dirs = list(sorted(ckpt_dirs, key=lambda x: int(str(x).split("-")[1])))
-    last_ckpt = ckpt_dirs[-1]
-
-    # Load the trainer state wih the full log history
-    state = TrainerState.load_from_json(f"{last_ckpt / 'trainer_state.json'}")
-
-    # Get the eval losses and steps from each checkpoint
-    eval_losses, steps = [], []
-    for item in state.log_history:
-        if "eval_loss" in item:
-            eval_losses.append(item["eval_loss"])
-            steps.append(item["step"])
-
-    # Get the best eval loss and step
-    best_ind = np.argmin(eval_losses)
-    best_step = steps[best_ind]
-    best_loss = eval_losses[best_ind]
+    # Get the best checkpoint
+    best_loss, best_ckpt = best_checkpoint(train_output_dir)
 
     # Print the best checkpoint
-    print(
-        f"Best checkpoint at {best_loss} eval loss: {output_dir / f'checkpoint-{best_step}'}"
-    )
+    print(f"Best checkpoint at {best_loss} eval loss: {best_ckpt}")
+
+
+@app.command()
+def collate_checkpoints(
+    run_dir: Path = typer.Option(
+        ...,
+        "--run_dir",
+        "-r",
+        help="The directory containing many training output directories.",
+    ),
+    output_dir: Path = typer.Option(
+        ...,
+        "--output_dir",
+        "-o",
+        help="The directory to write the gathered checkpoints to.",
+    ),
+) -> None:
+    """Utility to collect the best checkpoints from several training output
+    directories into a single directory (measured by smallest eval_loss)."""
+    import shutil
+    from genslm_esm.utils import best_checkpoint
+
+    # Get the best checkpoint from each training run
+    best_ckpts = []
+    for train_output_dir in filter(lambda x: x.is_dir(), run_dir.glob("*")):
+        best_loss, best_ckpt = best_checkpoint(train_output_dir)
+        best_ckpts.append(best_ckpt)
+
+        # Print the best checkpoint
+        print(f"Best checkpoint at {best_loss} eval loss: {best_ckpt}")
+
+    # Copy the best checkpoints to the output directory
+    output_dir.mkdir(exist_ok=True)
+    for best_ckpt in best_ckpts:
+        # Make an output directory for each best checkpoint
+        original_train_output_dir = best_ckpt.parent
+        new_train_output_dir = output_dir / original_train_output_dir.name
+        new_train_output_dir.mkdir(exist_ok=True)
+
+        # Copy the best checkpoint
+        shutil.copytree(best_ckpt, new_train_output_dir / best_ckpt.name)
+
+        # Copy any extra files or folders from the original training output directory
+        shutil.copytree(
+            original_train_output_dir,
+            new_train_output_dir,
+            ignore=shutil.ignore_patterns("checkpoint-*"),
+        )
 
 
 def main() -> None:
