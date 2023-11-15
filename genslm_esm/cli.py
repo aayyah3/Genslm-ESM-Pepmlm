@@ -82,8 +82,9 @@ def gather_fastas(
     ),
 ) -> None:
     """Utility to gather many fasta files into a single large one."""
-    from genslm_esm.dataset import read_fasta, write_fasta
     from tqdm import tqdm
+
+    from genslm_esm.dataset import read_fasta, write_fasta
 
     sequences = []
     for fasta_file in tqdm(fasta_dir.glob(glob_pattern)):
@@ -168,6 +169,47 @@ def generate_embeddings(
 
     # Save the embeddings to disk
     np.save(output_path, embeddings)
+
+
+@app.command()
+def best_checkpoint(
+    output_dir: Path = typer.Option(
+        ...,
+        "--output_dir",
+        "-o",
+        help="The directory containing the training run checkpoints.",
+    ),
+) -> None:
+    """Utility to report the best checkpoint from a training run (measured by smallest eval_loss)."""
+    from pathlib import Path
+
+    import numpy as np
+    from transformers.trainer_callback import TrainerState
+
+    # Get the checkpoint directories in order
+    ckpt_dirs = list(Path(output_dir).glob("checkpoint-*"))
+    ckpt_dirs = list(sorted(ckpt_dirs, key=lambda x: int(str(x).split("-")[1])))
+    last_ckpt = ckpt_dirs[-1]
+
+    # Load the trainer state wih the full log history
+    state = TrainerState.load_from_json(f"{last_ckpt / 'trainer_state.json'}")
+
+    # Get the eval losses and steps from each checkpoint
+    eval_losses, steps = [], []
+    for item in state.log_history:
+        if "eval_loss" in item:
+            eval_losses.append(item["eval_loss"])
+            steps.append(item["step"])
+
+    # Get the best eval loss and step
+    best_ind = np.argmin(eval_losses)
+    best_step = steps[best_ind]
+    best_loss = eval_losses[best_ind]
+
+    # Print the best checkpoint
+    print(
+        f"Best checkpoint at {best_loss} eval loss: {output_dir / f'checkpoint-{best_step}'}"
+    )
 
 
 def main() -> None:

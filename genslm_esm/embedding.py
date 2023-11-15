@@ -8,8 +8,8 @@ from tqdm import tqdm
 from transformers import EsmForMaskedLM, EsmTokenizer
 
 from genslm_esm.dataset import (
-    FastaDataset,
     FastaAminoAcidDataset,
+    FastaDataset,
     GenSLMColatorForLanguageModeling,
 )
 
