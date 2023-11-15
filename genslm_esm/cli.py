@@ -226,15 +226,18 @@ def collate_checkpoints(
         original_train_output_dir = best_ckpt.parent
         new_train_output_dir = output_dir / original_train_output_dir.name
 
-        # Copy any extra files or folders from the original training output directory
-        shutil.copytree(
-            original_train_output_dir,
-            new_train_output_dir,
-            ignore=shutil.ignore_patterns("checkpoint-*"),
-        )
+        print(f"Copying {original_train_output_dir} to {new_train_output_dir}")
 
-        # Copy the best checkpoint
-        shutil.copytree(best_ckpt, new_train_output_dir / best_ckpt.name)
+        # # Copy any extra files or folders from the original training output directory
+        # shutil.copytree(
+        #     original_train_output_dir,
+        #     new_train_output_dir,
+        #     ignore=shutil.ignore_patterns("checkpoint-*"),
+        # )
+
+        print(f"Copying {best_ckpt} to {new_train_output_dir}")
+        # # Copy the best checkpoint
+        # shutil.copytree(best_ckpt, new_train_output_dir / best_ckpt.name)
 
 
 def main() -> None:
