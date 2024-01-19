@@ -16,6 +16,6 @@ contrastive_temperature: 0.1
 contrastive_pooler: mean
 base_model: facebook/esm2_t6_8M_UR50D
 tokenizer_path: tokenizer_esm_genslm
-train_path: examples/ec/ec_data_v1/ev_v1_train.fasta
-eval_path: examples/ec/ec_data_v1/ev_v1_valid.fasta
+train_path: examples/ec/ec_data_v1/ec_v1_train.fasta
+eval_path: examples/ec/ec_data_v1/ec_v1_valid.fasta
 wandb_project: genslm-esm-ec-experiments
