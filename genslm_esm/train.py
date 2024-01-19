@@ -148,6 +148,12 @@ class TrainingConfig:
 
     def __post_init__(self):
         self.training_args = TrainingArguments(**self.training_args)
+        if self.compute_contrastive_loss:
+            self.compute_codon_loss = self.compute_aminoacid_loss = True
+        if not (self.compute_codon_loss or self.compute_aminoacid_loss):
+            raise ValueError(
+                "At least one of return_codon or return_aminoacid must be True"
+            )
         print(self)
 
         if self.training_args.local_rank <= 0 and (
