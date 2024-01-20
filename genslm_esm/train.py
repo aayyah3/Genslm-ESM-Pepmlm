@@ -14,7 +14,7 @@ from genslm_esm.dataset import (
     GenSLMColatorForLanguageModeling,
     HDF5Dataset,
 )
-from genslm_esm.modeling_esm import EsmForContrastiveMaskedLM
+from genslm_esm.modeling_esm_v2 import EsmForContrastiveMaskedLM
 
 # TODO: Set set_lr_scheduler using max_steps
 # TODO: Could run a couple lr's on the small model to see what works best
