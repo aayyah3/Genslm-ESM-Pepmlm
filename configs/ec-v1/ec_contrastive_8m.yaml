@@ -1,9 +1,9 @@
 training_args:
-  output_dir: runs/ec/ec_contrastive_8m
+  output_dir: runs/ec_v1/ec_contrastive_8m
   num_train_epochs: 20
-  per_device_train_batch_size: 4
-  per_device_eval_batch_size: 4
-  # gradient_accumulation_steps: 2
+  per_device_train_batch_size: 16
+  per_device_eval_batch_size: 16
+  gradient_accumulation_steps: 2
   dataloader_num_workers: 4
   eval_steps: 500
   logging_steps: 500
