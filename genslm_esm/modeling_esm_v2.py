@@ -165,7 +165,8 @@ class EsmForContrastiveMaskedLM(EsmForMaskedLM):
 
         # Only used if compute_codon_loss is True. Make a new config with the
         # same parameters as the original config but with a different vocab size
-        codon_config = EsmConfig(**config.to_dict(), vocab_size=69)
+        codon_config = EsmConfig(**config.to_dict())
+        codon_config.vocab_size = 69
         self.codon_lm_head = EsmLMHead(codon_config)
 
         # Initialize weights and apply final processing
