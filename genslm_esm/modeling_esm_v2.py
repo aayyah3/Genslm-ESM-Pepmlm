@@ -1,5 +1,6 @@
 """Adapted PyTorch ESM model."""
 # braceal 08/31/23: modified the original ESM Huggingface model to add a contrastive loss head.
+# braceal 01/20/24: modified the implementation to separate lm_head's for codons and amino acids.
 from typing import Optional, Tuple, Union
 
 import torch
@@ -23,13 +24,17 @@ class ContrastiveEsmConfig(EsmConfig):
 
     def __init__(
         self,
+        compute_aminoacid_loss: bool = True,
+        compute_codon_loss: bool = False,
         compute_contrastive_loss: bool = False,
         contrastive_temperature: float = 0.1,
         contrastive_pooler: str = "mean",
         **kwargs,
     ):
         super().__init__(**kwargs)
+        self.compute_aminoacid_loss = compute_aminoacid_loss
         self.compute_contrastive_loss = compute_contrastive_loss
+        self.compute_codon_loss = compute_codon_loss
         self.contrastive_temperature = contrastive_temperature
         self.contrastive_pooler = contrastive_pooler
 
@@ -141,18 +146,27 @@ class EsmForContrastiveMaskedLM(EsmForMaskedLM):
     def __init__(
         self,
         config: EsmConfig,
+        compute_aminoacid_loss: bool = True,
+        compute_codon_loss: bool = False,
         compute_contrastive_loss: bool = False,
         contrastive_temperature: float = 0.1,
         contrastive_pooler: str = "mean",
-    ):
+    ) -> None:
         super().__init__(config)
         # Inject contrastive loss parameters into the config
+        config.compute_aminoacid_loss = compute_aminoacid_loss
+        config.compute_codon_loss = compute_codon_loss
         config.compute_contrastive_loss = compute_contrastive_loss
         config.contrastive_temperature = contrastive_temperature
         config.contrastive_pooler = contrastive_pooler
 
         # Only used if compute_contrastive_loss is True
         self.contrastive_head = EsmContrastiveProjectionHead(config)
+
+        # Only used if compute_codon_loss is True. Make a new config with the
+        # same parameters as the original config but with a different vocab size
+        codon_config = EsmConfig(**config.to_dict(), vocab_size=69)
+        self.codon_lm_head = EsmLMHead(codon_config)
 
         # Initialize weights and apply final processing
         self.post_init()
@@ -210,17 +224,65 @@ class EsmForContrastiveMaskedLM(EsmForMaskedLM):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
-        sequence_output = outputs[0]
-        prediction_scores = self.lm_head(sequence_output)
+        sequence_output = outputs[0]  # (batch_size, seq_length, hidden_size)
+
+        # Compute the logits / prediction scores for each head
+        if self.config.compute_aminoacid_loss and self.config.compute_codon_loss:
+            # Split the sequence output into codon and amino acid embeddings
+            # These have shape (batch_size // 2, seq_length, hidden_size)
+            half_batch_size = sequence_output.shape[0] // 2
+            codon_embed = sequence_output[:half_batch_size]
+            amino_embed = sequence_output[half_batch_size:]
+            codon_prediction_scores = self.codon_lm_head(codon_embed)
+            amino_prediction_scores = self.lm_head(amino_embed)
+            # The prediction scores have different vocab sizes, so we can't concatenate them.
+            # Instead, we return the aminoacid scores (during inference, set either
+            # compute_aminoacid_loss or compute_codon_loss to False)
+            prediction_scores = amino_prediction_scores
+        elif self.config.compute_aminoacid_loss:
+            prediction_scores = self.lm_head(sequence_output)
+        elif self.config.compute_codon_loss:
+            prediction_scores = self.codon_lm_head(sequence_output)
+        else:
+            raise ValueError(
+                "Either compute_aminoacid_loss or compute_codon_loss must be True"
+            )
 
         masked_lm_loss = None
         if labels is not None:
             loss_fct = nn.CrossEntropyLoss()
 
-            labels = labels.to(prediction_scores.device)
-            masked_lm_loss = loss_fct(
-                prediction_scores.view(-1, self.config.vocab_size), labels.view(-1)
-            )
+            # Compute the masked language modeling loss for each head
+            if self.config.compute_aminoacid_loss and self.config.compute_codon_loss:
+                # Split the labels into codon and amino acid labels
+                # These have shape (batch_size // 2, seq_length)
+                half_batch_size = labels.shape[0] // 2
+                codon_labels = labels[:half_batch_size]
+                aminoacid_labels = labels[half_batch_size:]
+                # Compute the masked language modeling loss for each head
+                codon_masked_lm_loss = loss_fct(
+                    codon_prediction_scores.view(-1, codon_prediction_scores.shape[-1]),
+                    codon_labels.view(-1),
+                )
+                aminoacid_masked_lm_loss = loss_fct(
+                    amino_prediction_scores.view(-1, amino_prediction_scores.shape[-1]),
+                    aminoacid_labels.view(-1),
+                )
+                # Add the two losses together
+                masked_lm_loss = (codon_masked_lm_loss + aminoacid_masked_lm_loss) / 2.0
+
+            else:
+                # # (-1, vocab_size) is the shape of the prediction scores
+                masked_lm_loss = loss_fct(
+                    prediction_scores.view(-1, prediction_scores.shape[-1]),
+                    labels.view(-1),
+                )
+
+            # vocab_size = prediction_scores.shape[-1]
+            # labels = labels.to(prediction_scores.device)
+            # masked_lm_loss = loss_fct(
+            #     prediction_scores.view(-1, vocab_size), labels.view(-1)
+            # )
 
         # Custom logic to compute a contrastive loss between Codons and Amino Acid embeddings.
         # Everything else in this function is the same as the base class implementation.
