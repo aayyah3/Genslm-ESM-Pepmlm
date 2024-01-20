@@ -5,7 +5,7 @@ from typing import Optional, Tuple, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from transformers import logging
+from transformers import logging, EsmTokenizer
 from transformers.models.esm.configuration_esm import EsmConfig
 from transformers.models.esm.modeling_esm import (
     EsmForMaskedLM,
@@ -17,7 +17,7 @@ from transformers.models.esm.modeling_esm import (
 logger = logging.get_logger(__name__)
 
 
-# TODO: Currently not used
+# TODO: Only used for a type hint
 class ContrastiveEsmConfig(EsmConfig):
     """Add contrastive loss parameters to the ESM config."""
 
@@ -157,10 +157,13 @@ class EsmForContrastiveMaskedLM(EsmForMaskedLM):
         # Initialize weights and apply final processing
         self.post_init()
 
-    def resize_model_vocab(self, new_vocab_size: int) -> None:
+    @torch.no_grad()
+    def update_model_weights(self, tokenizer: EsmTokenizer) -> None:
         """Helper method to resize the model's input embeddings and output head for a new vocabulary size.
         Only makes changes if the new vocabulary size is different from the current vocabulary size.
         """
+        # Get the new vocabulary size
+        new_vocab_size = len(tokenizer)
         # Inject new vocabulary (modifies config)
         if new_vocab_size != self.config.vocab_size:
             logger.warning(

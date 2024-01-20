@@ -6,8 +6,7 @@ from copy import deepcopy
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from transformers import logging
-from transformers import EsmTokenizer
+from transformers import logging, EsmTokenizer
 from transformers.models.esm.configuration_esm import EsmConfig
 from transformers.models.esm.modeling_esm import (
     EsmForMaskedLM,
@@ -20,7 +19,7 @@ from genslm_esm.dataset import translation_table
 logger = logging.get_logger(__name__)
 
 
-# TODO: Currently not used
+# TODO: Only used for a type hint
 class ContrastiveEsmConfig(EsmConfig):
     """Add contrastive loss parameters to the ESM config."""
 
@@ -174,22 +173,6 @@ class EsmForContrastiveMaskedLM(EsmForMaskedLM):
 
         # Initialize weights and apply final processing
         self.post_init()
-
-    # def resize_model_vocab(self, tokenizer: EsmTokenizer) -> None:
-    #     """Helper method to resize the model's input embeddings and output head for a new vocabulary size.
-    #     Only makes changes if the new vocabulary size is different from the current vocabulary size.
-    #     """
-    #     new_vocab_size = len(tokenizer)
-    #     # Inject new vocabulary (modifies config)
-    #     if new_vocab_size != self.config.vocab_size:
-    #         logger.warning(
-    #             "Resizing token embedding layer from {} to {}. This reinitializes the EsmLMHead and input embedding layer weights".format(
-    #                 self.config.vocab_size, new_vocab_size
-    #             )
-    #         )
-    #         self.resize_token_embeddings(new_vocab_size)
-    #         # Make a new lm_head with uninitialized weights using the correct shape
-    #         self.lm_head = EsmLMHead(self.config)
 
     @torch.no_grad()
     def update_model_weights(self, tokenizer: EsmTokenizer) -> None:
