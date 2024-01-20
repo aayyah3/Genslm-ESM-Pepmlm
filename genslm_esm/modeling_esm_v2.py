@@ -397,7 +397,7 @@ class EsmForContrastiveMaskedLM(EsmForMaskedLM):
 
         # Custom logic to compute a contrastive loss between Codons and Amino Acid embeddings.
         # Everything else in this function is the same as the base class implementation.
-        if self.config.compute_contrastive_loss:
+        if labels is not None and self.config.compute_contrastive_loss:
             # Compute the contrastive loss following SimCLR and add it to the masked language modeling loss
             masked_lm_loss += self.contrastive_head(sequence_output)
 
