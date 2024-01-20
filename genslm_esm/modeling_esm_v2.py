@@ -200,7 +200,7 @@ class EsmForContrastiveMaskedLM(EsmForMaskedLM):
             return
 
         logger.warning(
-            "Resizing token embedding layer from {} to {}.".format(
+            "Resizing token embedding layer from {} to {} and initializing codon_lm_head with amino acid lm_head".format(
                 self.config.vocab_size, new_vocab_size
             )
         )
