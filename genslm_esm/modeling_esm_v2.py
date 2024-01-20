@@ -2,7 +2,7 @@
 # braceal 08/31/23: modified the original ESM Huggingface model to add a contrastive loss head.
 # braceal 01/20/24: modified the implementation to separate lm_head's for codons and amino acids.
 from typing import Optional, Tuple, Union
-
+from copy import deepcopy
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -14,6 +14,7 @@ from transformers.models.esm.modeling_esm import (
     EsmPooler,
     MaskedLMOutput,
 )
+from genslm_esm.dataset import translation_table
 
 logger = logging.get_logger(__name__)
 
@@ -165,6 +166,7 @@ class EsmForContrastiveMaskedLM(EsmForMaskedLM):
 
         # Only used if compute_codon_loss is True. Make a new config with the
         # same parameters as the original config but with a different vocab size
+        # (the number of codons 64 + special tokens)
         codon_config = EsmConfig(**config.to_dict())
         codon_config.vocab_size = 69
         self.codon_lm_head = EsmLMHead(codon_config)
@@ -186,6 +188,114 @@ class EsmForContrastiveMaskedLM(EsmForMaskedLM):
             self.resize_token_embeddings(new_vocab_size)
             # Make a new lm_head with uninitialized weights using the correct shape
             self.lm_head = EsmLMHead(self.config)
+
+    @torch.no_grad()
+    def update_model_weights(self, tokenizer):
+        # If the tokenizer has the same number of tokens as the model, then
+        # the model weights are already updated and we can return early.
+        if len(tokenizer) == self.config.vocab_size:
+            return
+
+        # Get the original token embedding matrix (TEM)
+        original_tem = deepcopy(self.esm.embeddings.word_embeddings.weight)
+        # Get the original amino acid lm head
+        original_lm_head = deepcopy(self.lm_head)
+
+        # Update model tem
+        self.resize_model_vocab(len(tokenizer))
+
+        # Get a reference to the new TEM matrix
+        new_tem = self.esm.embeddings.word_embeddings.weight
+
+        # Set each of the new codon representations equal to their corresponding
+        # amino acid representations (note that amino acid representations are
+        # unchanged by vocabulary expansion)
+        # Here we are looping over the entire vocab, but we are only using the
+        # vocab elements which are codons, so we name the variables accordingly.
+        for codon, codon_id in tokenizer.get_vocab().items():
+            # Note: the translation table maps stop codons to "" and the get
+            # function maps the special tokens and amino acids to "" as well.
+            aminoacid = translation_table.get(codon, "")
+            if aminoacid:
+                aminoacid_id = tokenizer._token_to_id[aminoacid]
+                # The new TEM matrix aminoacid represenations are the same
+                # as the original TEM (they are preserved during resizing)
+                new_tem[codon_id] = deepcopy(new_tem[aminoacid_id])
+                assert torch.equal(original_tem[aminoacid_id], new_tem[codon_id])
+
+        # Check that the TEM matrix was updated correctly
+        assert torch.equal(original_tem, new_tem[: len(original_tem)])
+        assert torch.equal(self.esm.embeddings.word_embeddings.weight, new_tem)
+
+        # Now that the TEM is updated, we also need to update the lm heads
+        # for amino acids and codons.
+
+        # Resizing vocab changes the original aminoacid lm_head, we want to
+        # change it back since we have a separate lm_head for the codon vocabulary.
+        self.lm_head = deepcopy(original_lm_head)
+        # Check that the original amino acid lm_head was reloaded correctly
+        assert torch.equal(original_lm_head.dense.weight, self.lm_head.dense.weight)
+        assert torch.equal(original_lm_head.dense.bias, self.lm_head.dense.bias)
+        assert torch.equal(
+            original_lm_head.layer_norm.weight, self.lm_head.layer_norm.weight
+        )
+        assert torch.equal(
+            original_lm_head.layer_norm.bias, self.lm_head.layer_norm.bias
+        )
+        assert torch.equal(original_lm_head.decoder.weight, self.lm_head.decoder.weight)
+        assert torch.equal(original_lm_head.bias, self.lm_head.bias)
+
+        # We initialize the codon_lm_head dense and layer_norm layers
+        # with the vocab-size invariant amino acid counterparts
+        self.codon_lm_head.dense = deepcopy(self.lm_head.dense)
+        self.codon_lm_head.layer_norm = deepcopy(self.lm_head.layer_norm)
+        # Check that the weights have been updated properly
+        assert torch.equal(self.codon_lm_head.dense.weight, self.lm_head.dense.weight)
+        assert torch.equal(self.codon_lm_head.dense.bias, self.lm_head.dense.bias)
+        assert torch.equal(
+            self.codon_lm_head.layer_norm.weight, self.lm_head.layer_norm.weight
+        )
+        assert torch.equal(
+            self.codon_lm_head.layer_norm.bias, self.lm_head.layer_norm.bias
+        )
+        assert id(self.codon_lm_head.dense) != id(self.lm_head.dense)
+        assert id(self.codon_lm_head.layer_norm) != id(self.lm_head.layer_norm)
+
+        # Get the original aminoacid lm_head decoder weights
+        aminoacid_decoder = original_lm_head.decoder.weight
+        aminoacid_bias = original_lm_head.bias
+
+        # Get references to the codon_lm_head components to change
+        codon_decoder = self.codon_lm_head.decoder.weight
+        codon_bias = self.codon_lm_head.bias
+
+        # Since the vocabulary is combined, there is a total vocab size of 97
+        # (amino acid + codons + special). However, the codon_lm_head decoder
+        # and bias only has an output size of 69 (codon + special). Our goals
+        # are to (1) initialize the weights relevant to special tokens to be
+        # identical to the original amino acid lm_head weights, and (2) to
+        # initialize the weights for each codon to the weights of the translated
+        # amino acid in the original lm head. Here the enumeration is taken over
+        # the 69 codon/special tokens. The first 5 tokens are the special tokens
+        # which are set to the first 5 dimensions of the codon_decoder/bias.
+        for codon_idx, codon in enumerate(tokenizer.added_tokens_decoder.values()):
+            aminoacid = translation_table.get(str(codon), "")
+            # The codon could be a special token (<cls>, <pad>, <eos>, <unk>, <mask>)
+            if aminoacid or codon.special:
+                # Get the id of the aminoacid/special token corresponding to the current codon
+                aminoacid_id = tokenizer._token_to_id[
+                    str(codon) if codon.special else aminoacid
+                ]
+                # Update the codon_decoder/bias with the corresponding aminoacid weights
+                codon_decoder[codon_idx] = deepcopy(aminoacid_decoder[aminoacid_id])
+                codon_bias[codon_idx] = deepcopy(aminoacid_bias[aminoacid_id])
+                # Check that the update was successfull
+                assert torch.equal(
+                    codon_decoder[codon_idx], aminoacid_decoder[aminoacid_id]
+                )
+                assert torch.equal(codon_bias[codon_idx], aminoacid_bias[aminoacid_id])
+                assert torch.equal(codon_decoder, self.codon_lm_head.decoder.weight)
+                assert torch.equal(codon_bias, self.codon_lm_head.bias)
 
     def forward(
         self,
