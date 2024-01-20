@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from transformers import logging
+from transformers import EsmTokenizer
 from transformers.models.esm.configuration_esm import EsmConfig
 from transformers.models.esm.modeling_esm import (
     EsmForMaskedLM,
@@ -174,35 +175,43 @@ class EsmForContrastiveMaskedLM(EsmForMaskedLM):
         # Initialize weights and apply final processing
         self.post_init()
 
-    def resize_model_vocab(self, new_vocab_size: int) -> None:
-        """Helper method to resize the model's input embeddings and output head for a new vocabulary size.
-        Only makes changes if the new vocabulary size is different from the current vocabulary size.
-        """
-        # Inject new vocabulary (modifies config)
-        if new_vocab_size != self.config.vocab_size:
-            logger.warning(
-                "Resizing token embedding layer from {} to {}. This reinitializes the EsmLMHead and input embedding layer weights".format(
-                    self.config.vocab_size, new_vocab_size
-                )
-            )
-            self.resize_token_embeddings(new_vocab_size)
-            # Make a new lm_head with uninitialized weights using the correct shape
-            self.lm_head = EsmLMHead(self.config)
+    # def resize_model_vocab(self, tokenizer: EsmTokenizer) -> None:
+    #     """Helper method to resize the model's input embeddings and output head for a new vocabulary size.
+    #     Only makes changes if the new vocabulary size is different from the current vocabulary size.
+    #     """
+    #     new_vocab_size = len(tokenizer)
+    #     # Inject new vocabulary (modifies config)
+    #     if new_vocab_size != self.config.vocab_size:
+    #         logger.warning(
+    #             "Resizing token embedding layer from {} to {}. This reinitializes the EsmLMHead and input embedding layer weights".format(
+    #                 self.config.vocab_size, new_vocab_size
+    #             )
+    #         )
+    #         self.resize_token_embeddings(new_vocab_size)
+    #         # Make a new lm_head with uninitialized weights using the correct shape
+    #         self.lm_head = EsmLMHead(self.config)
 
     @torch.no_grad()
-    def update_model_weights(self, tokenizer):
+    def update_model_weights(self, tokenizer: EsmTokenizer) -> None:
         # If the tokenizer has the same number of tokens as the model, then
         # the model weights are already updated and we can return early.
-        if len(tokenizer) == self.config.vocab_size:
+        new_vocab_size = len(tokenizer)
+        if new_vocab_size == self.config.vocab_size:
             return
+
+        logger.warning(
+            "Resizing token embedding layer from {} to {}.".format(
+                self.config.vocab_size, new_vocab_size
+            )
+        )
 
         # Get the original token embedding matrix (TEM)
         original_tem = deepcopy(self.esm.embeddings.word_embeddings.weight)
         # Get the original amino acid lm head
         original_lm_head = deepcopy(self.lm_head)
 
-        # Update model tem
-        self.resize_model_vocab(len(tokenizer))
+        # Inject new vocabulary (modifies config and TEM)
+        self.resize_token_embeddings(new_vocab_size)
 
         # Get a reference to the new TEM matrix
         new_tem = self.esm.embeddings.word_embeddings.weight
