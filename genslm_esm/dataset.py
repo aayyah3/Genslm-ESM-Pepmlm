@@ -360,6 +360,9 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
             amino_batch["labels"] = torch.cat(
                 [amino_batch["labels"], pad * -100], dim=1
             )
+            amino_batch["attention_mask"] = torch.cat(
+                [amino_batch["attention_mask"], pad * 0], dim=1
+            )
 
             # Now we need stack the codon and amino acid batches
             input_ids = torch.cat(
@@ -374,18 +377,12 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
             # We also need to stack the labels
             labels = torch.cat([codon_batch["labels"], amino_batch["labels"]], dim=0)
 
-            # Finally, we need to stack the token type ids
-            token_type_ids = torch.cat(
-                [codon_batch["token_type_ids"], amino_batch["token_type_ids"]], dim=0
-            )
-
             # Return the stacked batch as a BatchEncoding
             return BatchEncoding(
                 {
                     "input_ids": input_ids,
                     "attention_mask": attention_mask,
                     "labels": labels,
-                    "token_type_ids": token_type_ids,
                 }
             )
 
