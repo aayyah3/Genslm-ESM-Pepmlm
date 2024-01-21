@@ -306,6 +306,7 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
         if not self.train_mode:
             return batch
 
+
         if self.mlm:
             # If special token mask has been preprocessed, pop it from the dict.
             batch["input_ids"], batch["labels"] = self.torch_mask_tokens(
@@ -330,6 +331,7 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
         #     return self.torch_call_helper(
         #         [e["codon"] for e in examples] + [e["aminoacid"] for e in examples]
         #     )
+        #import pdb; pdb.set_trace()
         if self.return_codon:
             # Set the low parameter to 33 to sample random noise from the
             # codon vocabulary and not the amino acid vocabulary
@@ -354,8 +356,10 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
         if self.return_codon and self.return_aminoacid:
             # Then we need to add an extra pad token to the amino acid input ids
             # and labels to account for the stop codon
-            batch_size = amino_batch["input_ids"].shape[0]
-            pad = torch.ones((batch_size, 1), dtype=torch.long)
+            #import pdb; pdb.set_trace()
+            batch_size, seq_len = codon_batch["input_ids"].shape
+            pad_size = seq_len - amino_batch["input_ids"].shape[1]
+            pad = torch.ones((batch_size, pad_size), dtype=torch.long)
             amino_batch["input_ids"] = torch.cat([amino_batch["input_ids"], pad], dim=1)
             amino_batch["labels"] = torch.cat(
                 [amino_batch["labels"], pad * -100], dim=1
@@ -363,30 +367,34 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
             amino_batch["attention_mask"] = torch.cat(
                 [amino_batch["attention_mask"], pad * 0], dim=1
             )
+            # Pack the input_ids, attention_mask, labels into a single batch encoding   
+            return BatchEncoding({
+                key: torch.cat([codon_batch[key], amino_batch[key]], dim=0)
+                for key in codon_batch.keys()
+            })
 
             # Now we need stack the codon and amino acid batches
-            input_ids = torch.cat(
-                [codon_batch["input_ids"], amino_batch["input_ids"]], dim=0
-            )
+            #input_ids = torch.cat(
+            #    [codon_batch["input_ids"], amino_batch["input_ids"]], dim=0
+            #)
 
             # We also need to stack the attention masks
-            attention_mask = torch.cat(
-                [codon_batch["attention_mask"], amino_batch["attention_mask"]], dim=0
-            )
+            #attention_mask = torch.cat(
+            #    [codon_batch["attention_mask"], amino_batch["attention_mask"]], dim=0
+            #)
 
             # We also need to stack the labels
-            labels = torch.cat([codon_batch["labels"], amino_batch["labels"]], dim=0)
+            #labels = torch.cat([codon_batch["labels"], amino_batch["labels"]], dim=0)
 
             # Return the stacked batch as a BatchEncoding
-            return BatchEncoding(
-                {
-                    "input_ids": input_ids,
-                    "attention_mask": attention_mask,
-                    "labels": labels,
-                }
-            )
+            #return BatchEncoding(
+            #    {
+            #        "input_ids": input_ids,
+            #        "attention_mask": attention_mask,
+            #        "labels": labels,
+            #    }
+            #)
 
-            pass
         elif self.return_codon:
             return codon_batch
         elif self.return_aminoacid:

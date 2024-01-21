@@ -367,15 +367,29 @@ class EsmForContrastiveMaskedLM(EsmForMaskedLM):
                 half_batch_size = labels.shape[0] // 2
                 codon_labels = labels[:half_batch_size]
                 aminoacid_labels = labels[half_batch_size:]
+                #print(f"{codon_prediction_scores.shape=}")
+                #print(f"{codon_labels.shape=}")
+                #print(f"{codon_labels=}")
+                #import numpy as np
+                #print(f"{np.unique(codon_labels.cpu().numpy())=}")
+                #print(f"{amino_prediction_scores.shape=}")
+                #print(f"{aminoacid_labels.shape=}")
+                #import pdb; pdb.set_trace()
                 # Compute the masked language modeling loss for each head
-                codon_masked_lm_loss = loss_fct(
-                    codon_prediction_scores.view(-1, codon_prediction_scores.shape[-1]),
-                    codon_labels.view(-1),
-                )
+                #codon_masked_lm_loss = loss_fct(
+                #    codon_prediction_scores.view(-1, codon_prediction_scores.shape[-1]),
+                #    codon_labels.view(-1),
+                #)
+                #print("complete codon loss")
                 aminoacid_masked_lm_loss = loss_fct(
                     amino_prediction_scores.view(-1, amino_prediction_scores.shape[-1]),
                     aminoacid_labels.view(-1),
                 )
+                #print("complete aa loss")
+                codon_masked_lm_loss = loss_fct(
+                     codon_prediction_scores.view(-1, codon_prediction_scores.shape[-1]),
+                     codon_labels.view(-1),
+                 )
                 # Add the two losses together
                 masked_lm_loss = (codon_masked_lm_loss + aminoacid_masked_lm_loss) / 2.0
 
