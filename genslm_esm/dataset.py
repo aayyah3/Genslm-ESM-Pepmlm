@@ -341,7 +341,7 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
             mask = codon_batch["labels"] > 32
             codon_batch["labels"][mask] -= 28
 
-        elif self.return_aminoacid:
+        if self.return_aminoacid:
             # Set the high parameter to 25 to sample random noise from the
             # amino acid vocabulary and not the codon vocabulary (there are a
             # tokens in the amino acid vocabulary that we want to avoid sampling from)
