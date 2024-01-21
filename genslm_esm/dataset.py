@@ -355,9 +355,11 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
             # Then we need to add an extra pad token to the amino acid input ids
             # and labels to account for the stop codon
             batch_size = amino_batch["input_ids"].shape[0]
-            pad = torch.ones((batch_size, 1), dtype=torch.long) * -100
+            pad = torch.ones((batch_size, 1), dtype=torch.long)
             amino_batch["input_ids"] = torch.cat([amino_batch["input_ids"], pad], dim=1)
-            amino_batch["labels"] = torch.cat([amino_batch["labels"], pad], dim=1)
+            amino_batch["labels"] = torch.cat(
+                [amino_batch["labels"], pad * -100], dim=1
+            )
 
             # Now we need stack the codon and amino acid batches
             input_ids = torch.cat(
