@@ -201,6 +201,8 @@ def main():
     tokenizer = EsmTokenizer.from_pretrained(config.tokenizer_path)
     model = EsmForContrastiveMaskedLM.from_pretrained(
         config.base_model,
+        compute_aminoacid_loss=config.compute_aminoacid_loss,
+        compute_codon_loss=config.compute_codon_loss,
         compute_contrastive_loss=config.compute_contrastive_loss,
         contrastive_temperature=config.contrastive_temperature,
         contrastive_pooler=config.contrastive_pooler,

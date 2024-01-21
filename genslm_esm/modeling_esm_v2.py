@@ -154,6 +154,11 @@ class EsmForContrastiveMaskedLM(EsmForMaskedLM):
         contrastive_pooler: str = "mean",
     ) -> None:
         super().__init__(config)
+        if compute_contrastive_loss:
+            if not compute_aminoacid_loss or not compute_codon_loss:
+                raise ValueError(
+                    "If compute_contrastive_loss is True, then compute_aminoacid_loss and compute_codon_loss must both be True"
+                )
         # Inject contrastive loss parameters into the config
         config.compute_aminoacid_loss = compute_aminoacid_loss
         config.compute_codon_loss = compute_codon_loss
