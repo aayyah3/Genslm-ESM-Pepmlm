@@ -332,8 +332,10 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
             # We do this by subtracting 28 from the codon labels since the codon labels start with
             # the mask token at '<mask>': 32, and we also need to account for the special tokens
             # '<cls>': 0, '<pad>': 1, '<eos>': 2, '<unk>': 3, which are included in the codon vocabulary
-            mask = codon_batch["labels"] > 32
-            codon_batch["labels"][mask] -= 28
+            # Note: labels are only present during training, not inference.
+            if "labels" in codon_batch:
+                mask = codon_batch["labels"] > 32
+                codon_batch["labels"][mask] -= 28
 
         if self.return_aminoacid:
             # Set the high parameter to 25 to sample random noise from the
