@@ -6,8 +6,7 @@ from copy import deepcopy
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from transformers import logging
-from transformers import EsmTokenizer
+from transformers import logging, EsmTokenizer
 from transformers.models.esm.configuration_esm import EsmConfig
 from transformers.models.esm.modeling_esm import (
     EsmForMaskedLM,
@@ -20,7 +19,7 @@ from genslm_esm.dataset import translation_table
 logger = logging.get_logger(__name__)
 
 
-# TODO: Currently not used
+# TODO: Only used for a type hint
 class ContrastiveEsmConfig(EsmConfig):
     """Add contrastive loss parameters to the ESM config."""
 
@@ -155,12 +154,28 @@ class EsmForContrastiveMaskedLM(EsmForMaskedLM):
         contrastive_pooler: str = "mean",
     ) -> None:
         super().__init__(config)
+        if compute_contrastive_loss:
+            if not compute_aminoacid_loss or not compute_codon_loss:
+                raise ValueError(
+                    "If compute_contrastive_loss is True, then compute_aminoacid_loss and compute_codon_loss must both be True"
+                )
         # Inject contrastive loss parameters into the config
-        config.compute_aminoacid_loss = compute_aminoacid_loss
-        config.compute_codon_loss = compute_codon_loss
-        config.compute_contrastive_loss = compute_contrastive_loss
-        config.contrastive_temperature = contrastive_temperature
-        config.contrastive_pooler = contrastive_pooler
+        # Note: The config settings will override the init settings. This
+        # is so that checkpoints saved on the first training run will be
+        # properly initialized when the checkpoint is loaded. If this is
+        # not done, then it will default to the settings passed in the init.
+        # Note: the saved checkpoint configs contain these settings, but the
+        # original ESM configs do not.
+        if not hasattr(config, "compute_aminoacid_loss"):
+            config.compute_aminoacid_loss = compute_aminoacid_loss
+        if not hasattr(config, "compute_codon_loss"):
+            config.compute_codon_loss = compute_codon_loss
+        if not hasattr(config, "compute_contrastive_loss"):
+            config.compute_contrastive_loss = compute_contrastive_loss
+        if not hasattr(config, "contrastive_temperature"):
+            config.contrastive_temperature = contrastive_temperature
+        if not hasattr(config, "contrastive_pooler"):
+            config.contrastive_pooler = contrastive_pooler
 
         # Only used if compute_contrastive_loss is True
         self.contrastive_head = EsmContrastiveProjectionHead(config)
@@ -172,24 +187,30 @@ class EsmForContrastiveMaskedLM(EsmForMaskedLM):
         codon_config.vocab_size = 69
         self.codon_lm_head = EsmLMHead(codon_config)
 
+        # Need to initialize the lm_head for amino acids with the
+        # correct vocab size in order to load weights for inference properly
+        # (since the vocab size in config is the combined vocab).
+        # Note: lm_head is also modified if update_model_weights is called.
+        amino_config = EsmConfig(**config.to_dict())
+        amino_config.vocab_size = 33
+        self.lm_head = EsmLMHead(amino_config)
+
         # Initialize weights and apply final processing
         self.post_init()
 
-    # def resize_model_vocab(self, tokenizer: EsmTokenizer) -> None:
-    #     """Helper method to resize the model's input embeddings and output head for a new vocabulary size.
-    #     Only makes changes if the new vocabulary size is different from the current vocabulary size.
-    #     """
-    #     new_vocab_size = len(tokenizer)
-    #     # Inject new vocabulary (modifies config)
-    #     if new_vocab_size != self.config.vocab_size:
-    #         logger.warning(
-    #             "Resizing token embedding layer from {} to {}. This reinitializes the EsmLMHead and input embedding layer weights".format(
-    #                 self.config.vocab_size, new_vocab_size
-    #             )
-    #         )
-    #         self.resize_token_embeddings(new_vocab_size)
-    #         # Make a new lm_head with uninitialized weights using the correct shape
-    #         self.lm_head = EsmLMHead(self.config)
+        #print(self)
+        #exit()
+
+    def get_output_embeddings(self):
+        # We override weight tieing since the new token embedding matrix
+        # has a different vocab size from the amino acid lm_head.decoder
+        # with the addition of the new codon tokens. It would also be
+        # challenging to tie weights between the token embedding matrix
+        # and the codon_lm_head.decoder (since it would also need to share
+        # weights for the special tokens which would be tied to the amino
+        # acid lm_head.decoder as well.
+        return None
+        # return self.lm_head.decoder
 
     @torch.no_grad()
     def update_model_weights(self, tokenizer: EsmTokenizer) -> None:
@@ -200,7 +221,7 @@ class EsmForContrastiveMaskedLM(EsmForMaskedLM):
             return
 
         logger.warning(
-            "Resizing token embedding layer from {} to {}.".format(
+            "Resizing token embedding layer from {} to {} and initializing codon_lm_head with amino acid lm_head".format(
                 self.config.vocab_size, new_vocab_size
             )
         )
@@ -380,13 +401,13 @@ class EsmForContrastiveMaskedLM(EsmForMaskedLM):
                 codon_labels = labels[:half_batch_size]
                 aminoacid_labels = labels[half_batch_size:]
                 # Compute the masked language modeling loss for each head
-                codon_masked_lm_loss = loss_fct(
-                    codon_prediction_scores.view(-1, codon_prediction_scores.shape[-1]),
-                    codon_labels.view(-1),
-                )
                 aminoacid_masked_lm_loss = loss_fct(
                     amino_prediction_scores.view(-1, amino_prediction_scores.shape[-1]),
                     aminoacid_labels.view(-1),
+                )
+                codon_masked_lm_loss = loss_fct(
+                    codon_prediction_scores.view(-1, codon_prediction_scores.shape[-1]),
+                    codon_labels.view(-1),
                 )
                 # Add the two losses together
                 masked_lm_loss = (codon_masked_lm_loss + aminoacid_masked_lm_loss) / 2.0
@@ -397,12 +418,6 @@ class EsmForContrastiveMaskedLM(EsmForMaskedLM):
                     prediction_scores.view(-1, prediction_scores.shape[-1]),
                     labels.view(-1),
                 )
-
-            # vocab_size = prediction_scores.shape[-1]
-            # labels = labels.to(prediction_scores.device)
-            # masked_lm_loss = loss_fct(
-            #     prediction_scores.view(-1, vocab_size), labels.view(-1)
-            # )
 
         # Custom logic to compute a contrastive loss between Codons and Amino Acid embeddings.
         # Everything else in this function is the same as the base class implementation.

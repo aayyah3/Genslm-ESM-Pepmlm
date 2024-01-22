@@ -14,7 +14,16 @@ from genslm_esm.dataset import (
     GenSLMColatorForLanguageModeling,
     HDF5Dataset,
 )
-from genslm_esm.modeling_esm import EsmForContrastiveMaskedLM
+from genslm_esm.modeling_esm_v2 import EsmForContrastiveMaskedLM
+
+# TODO: Set set_lr_scheduler using max_steps
+# TODO: Could run a couple lr's on the small model to see what works best
+# TODO: Can try a random weight init to compare our results (if it's just the
+#       dataset that's hard, then scale should also help).
+# TODO: Might need to add a hostfile to the accelerate api --deepspeed_hostfile DEEPSPEED_HOSTFILE
+# TODO: Try stage 0 deepspeed --deepspeed_config_file DEEPSPEED_CONFIG_FILE
+# TODO: Setup runs so that the global token batch size is constant across the different models.
+# Current ds config: ../../cache/huggingface/accelerate/default_config.yaml
 
 
 @dataclass
@@ -192,6 +201,8 @@ def main():
     tokenizer = EsmTokenizer.from_pretrained(config.tokenizer_path)
     model = EsmForContrastiveMaskedLM.from_pretrained(
         config.base_model,
+        compute_aminoacid_loss=config.compute_aminoacid_loss,
+        compute_codon_loss=config.compute_codon_loss,
         compute_contrastive_loss=config.compute_contrastive_loss,
         contrastive_temperature=config.contrastive_temperature,
         contrastive_pooler=config.contrastive_pooler,
@@ -199,7 +210,7 @@ def main():
 
     # If the number of tokens in the tokenizer is different from the number of tokens
     # in the model resize the input embedding layer and the MLM prediction head
-    model.resize_model_vocab(len(tokenizer))
+    model.update_model_weights(tokenizer)
 
     # Construct the train and validation datasets
     dset_class = HDF5Dataset if config.train_path.endswith(".h5") else FastaDataset
