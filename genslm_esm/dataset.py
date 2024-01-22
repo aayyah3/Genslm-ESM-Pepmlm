@@ -434,3 +434,73 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
 
         # The rest of the time (10% of the time) we keep the masked input tokens unchanged
         return inputs, labels
+
+
+class GenSLMColatorForLanguageModeling_v3(GenSLMColatorForLanguageModeling):
+    def torch_call(self, examples: List[Dict[str, str]]) -> BatchEncoding:
+        if self.return_codon:
+            # Set the low parameter to 33 to sample random noise from the
+            # codon vocabulary and not the amino acid vocabulary
+            codon_batch = self.torch_call_helper([e["codon"] for e in examples], low=33)
+            # We first need to realign the codon labels onto the output label range [0, 69)
+            # We do this by subtracting 28 from the codon labels since the codon labels start with
+            # the mask token at '<mask>': 32, and we also need to account for the special tokens
+            # '<cls>': 0, '<pad>': 1, '<eos>': 2, '<unk>': 3, which are included in the codon vocabulary
+            # Note: labels are only present during training, not inference.
+            if "labels" in codon_batch:
+                mask = codon_batch["labels"] > 32
+                codon_batch["labels"][mask] -= 28
+
+        if self.return_aminoacid:
+            # Set the high parameter to 25 to sample random noise from the
+            # amino acid vocabulary and not the codon vocabulary (there are a
+            # tokens in the amino acid vocabulary that we want to avoid sampling from)
+            # 'B': 25, 'U': 26, 'Z': 27, 'O': 28, '.': 29, '-': 30, '<null_1>': 31, '<mask>': 32,
+            # Note: we also avoid sampling the special tokens '<cls>': 0, '<pad>': 1, '<eos>': 2, '<unk>': 3,
+            amino_batch = self.torch_call_helper(
+                [e["aminoacid"] for e in examples], low=4, high=25
+            )
+
+        if self.return_codon and self.return_aminoacid:
+            # Then we need to add an extra pad token to the amino acid input_ids,
+            # labels, and attention_mask to account for the stop codon
+            batch_size, seq_len = codon_batch["input_ids"].shape
+            pad_size = seq_len - amino_batch["input_ids"].shape[1]
+            pad = torch.ones((batch_size, pad_size), dtype=torch.long)
+            amino_batch["input_ids"] = torch.cat([amino_batch["input_ids"], pad], dim=1)
+            amino_batch["labels"] = torch.cat(
+                [amino_batch["labels"], pad * -100], dim=1
+            )
+            amino_batch["attention_mask"] = torch.cat(
+                [amino_batch["attention_mask"], pad * 0], dim=1
+            )
+
+            # Pack the input_ids, attention_mask, labels into a single batch encoding
+            # return BatchEncoding(
+            #     {
+            #         key: torch.cat([codon_batch[key], amino_batch[key]], dim=0)
+            #         for key in codon_batch.keys()
+            #     }
+            # )
+
+            # We have to put the amino acid and codon sequences into separate
+            # fields in the BatchEncoding object because, otherwise the order
+            # gets shuffled in the hugging face distributed sampler.
+            return BatchEncoding(
+                {
+                    # The amino acids are passed through the standard variables
+                    "input_ids": amino_batch["input_ids"],
+                    "attention_mask": amino_batch["attention_mask"],
+                    "labels": amino_batch["labels"],
+                    "codon_input_ids": codon_batch["input_ids"],
+                    "codon_attention_mask": codon_batch["attention_mask"],
+                    "codon_labels": codon_batch["labels"],
+                }
+            )
+
+        elif self.return_codon:
+            return codon_batch
+        elif self.return_aminoacid:
+            return amino_batch
+
+        assert False

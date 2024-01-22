@@ -11,10 +11,10 @@ from transformers.trainer_utils import get_last_checkpoint
 
 from genslm_esm.dataset import (
     FastaDataset,
-    GenSLMColatorForLanguageModeling,
+    GenSLMColatorForLanguageModeling_v3,
     HDF5Dataset,
 )
-from genslm_esm.modeling_esm_v2 import EsmForContrastiveMaskedLM
+from genslm_esm.modeling_esm_v3 import EsmForContrastiveMaskedLM
 
 # TODO: Set set_lr_scheduler using max_steps
 # TODO: Could run a couple lr's on the small model to see what works best
@@ -225,7 +225,7 @@ def main():
         return_aminoacid=config.compute_aminoacid_loss,
     )
 
-    data_collator = GenSLMColatorForLanguageModeling(
+    data_collator = GenSLMColatorForLanguageModeling_v3(
         return_codon=config.compute_codon_loss,
         return_aminoacid=config.compute_aminoacid_loss,
         train_mode=True,
