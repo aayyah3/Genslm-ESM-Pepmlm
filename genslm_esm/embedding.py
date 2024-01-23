@@ -6,12 +6,12 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import EsmForMaskedLM, EsmTokenizer
-from genslm_esm.modeling_esm_v2 import EsmForContrastiveMaskedLM
+from genslm_esm.modeling_esm_v3 import EsmForContrastiveMaskedLM
 
 from genslm_esm.dataset import (
     FastaAminoAcidDataset,
     FastaDataset,
-    GenSLMColatorForLanguageModeling,
+    GenSLMColatorForLanguageModeling_v3,
 )
 
 
@@ -41,9 +41,9 @@ def embedding_inference(
     fasta_contains_aminoacid: bool = False,
 ) -> npt.ArrayLike:
     tokenizer = EsmTokenizer.from_pretrained(tokenizer_path)
-    #import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     model = EsmForContrastiveMaskedLM.from_pretrained(model_path)
-    #model = EsmForMaskedLM.from_pretrained(model_path)
+    # model = EsmForMaskedLM.from_pretrained(model_path)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device).eval()
 
@@ -56,7 +56,7 @@ def embedding_inference(
             return_aminoacid=return_aminoacid,
         )
 
-    data_collator = GenSLMColatorForLanguageModeling(
+    data_collator = GenSLMColatorForLanguageModeling_v3(
         return_codon=return_codon,
         return_aminoacid=return_aminoacid,
         tokenizer=tokenizer,
