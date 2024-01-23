@@ -35,6 +35,14 @@ accelerate_config_file=examples/ec/deepspeed_configs/deepspeed_ddp_dynamo_single
 # Change to work directory
 cd /lus/eagle/projects/CVD-Mol-AI/braceal/src/genslm-esm
 
+# Check if a config file is provided as a command-line argument
+if [ "$#" -ne 1 ]; then
+    echo "Usage: $0 <config_file>"
+    exit 1
+fi
+
+config_file="$1"
+
 mpiexec --np ${NTOTRANKS} -ppn ${NRANKS} -d ${NDEPTH} --cpu-bind depth accelerate launch \
  --config_file ${accelerate_config_file} \
  --main_process_ip $(head -1 $PBS_NODEFILE) \
@@ -42,4 +50,4 @@ mpiexec --np ${NTOTRANKS} -ppn ${NRANKS} -d ${NDEPTH} --cpu-bind depth accelerat
  --num_machines ${NNODES} \
  --num_processes $((NTOTRANKS * GPU_PER_NODE)) \
  --deepspeed_hostfile hostfile \
- genslm_esm/train.py --config configs/ec-v1/ec_contrastive_8m.yaml
+ genslm_esm/train.py --config ${config_file}
