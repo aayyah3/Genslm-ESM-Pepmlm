@@ -21,6 +21,9 @@ echo "NUM_OF_NODES= ${NNODES} TOTAL_NUM_RANKS= ${NTOTRANKS} RANKS_PER_NODE= ${NR
 # Load modules
 module load conda/2023-10-04
 conda activate evoforecast
+export HF_HOME=/lus/eagle/projects/CVD-Mol-AI/braceal/cache/huggingface
+
+# TODO: Forward env var to executables
 
 # Change to work directory
 cd /lus/eagle/projects/CVD-Mol-AI/braceal/src/genslm-esm
