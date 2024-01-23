@@ -2,7 +2,7 @@ import os
 from argparse import ArgumentParser
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-
+from typing import Dict
 import wandb
 import yaml
 import transformers
@@ -189,6 +189,19 @@ class TrainingConfig:
                 yaml.dump(asdict(self), fp)
 
 
+class ClearEvalMemoryTrainer(Trainer):
+    def clear_cuda_cache(self) -> None:
+        import gc, torch
+        gc.collect()
+        with torch.no_grad():
+            torch.cuda.empty_cache()
+            torch.clear_autocast_cache()
+
+    def evaluate(self, *args, **kwargs) -> Dict[str, float]:
+        self.clear_cuda_cache()
+        return super().evaluate(*args, **kwargs)
+
+
 def main():
     # Parse a yaml file to get the training config
     parser = ArgumentParser()
@@ -235,7 +248,7 @@ def main():
         pad_to_multiple_of=8 if config.training_args.fp16 else None,
     )
 
-    trainer = Trainer(
+    trainer = ClearEvalMemoryTrainer(
         model=model,
         args=config.training_args,
         data_collator=data_collator,

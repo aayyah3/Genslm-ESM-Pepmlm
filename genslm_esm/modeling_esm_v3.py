@@ -65,7 +65,7 @@ class ContrastiveLoss(nn.Module):
         cos_sim = F.cosine_similarity(z[:, None, :], z[None, :, :], dim=-1)
         # Mask out cosine similarity to itself
         self_mask = torch.eye(batch_size, dtype=torch.bool, device=z.device)
-        cos_sim.masked_fill_(self_mask, -9e15)
+        cos_sim.masked_fill_(self_mask, -65504)
         # Find positive example -> batch_size // 2 away from the original example
         pos_mask = self_mask.roll(shifts=batch_size // 2, dims=0)
         # InfoNCE loss
