@@ -25,4 +25,4 @@ conda activate evoforecast
 # Change to work directory
 cd /lus/eagle/projects/CVD-Mol-AI/braceal/src/genslm-esm
 
-mpiexec --np ${NTOTRANKS} -ppn ${NRANKS} -d ${NDEPTH} --cpu-bind depth accelerate launch  genslm-esm/train.py --config configs/ec-v1/ec_contrastive_8m.yaml
+mpiexec --np ${NTOTRANKS} -ppn ${NRANKS} -d ${NDEPTH} --cpu-bind depth accelerate launch  genslm_esm/train.py --config configs/ec-v1/ec_contrastive_8m.yaml
