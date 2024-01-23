@@ -4,7 +4,7 @@
 #PBS -l filesystems=home:eagle
 #PBS -l walltime=0:60:00
 #PBS -q debug
-#PBS -A RL-fold
+#PBS -A FoundEpidem
 
 NNODES=`wc -l < $PBS_NODEFILE`
 NRANKS=1 # Number of MPI ranks to spawn per node
