@@ -5,15 +5,8 @@
 #PBS -l walltime=0:60:00
 #PBS -q debug
 #PBS -A FoundEpidem
-
-# Access the working directory from command-line argument
-WORKDIR=$1
-
-# Change to work directory to write hostfile, .deepspeed_env, and logs to a unique location
-cd $WORKDIR
-
-#PBS -o $WORKDIR/$PBS_JOBID.out
-#PBS -e $WORKDIR/$PBS_JOBID.err
+#PBS -o $PBS_O_WORKDIR/$PBS_JOBID.out
+#PBS -e $PBS_O_WORKDIR/$PBS_JOBID.err
 
 NNODES=`wc -l < $PBS_NODEFILE`
 NRANKS=1 # Number of MPI ranks to spawn per node
@@ -27,6 +20,8 @@ export ftp_proxy="http://proxy-01.pub.alcf.anl.gov:3128"
 
 echo "NUM_OF_NODES= ${NNODES} TOTAL_NUM_RANKS= ${NTOTRANKS} RANKS_PER_NODE= ${NRANKS}"
 
+# Change to work directory to write hostfile, .deepspeed_env, and logs to a unique location
+cd $PBS_O_WORKDIR
 
 # Setup the deepspeed hostfile
 cat $PBS_NODEFILE > hostfile 
