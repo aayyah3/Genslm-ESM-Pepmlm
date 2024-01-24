@@ -40,7 +40,7 @@ accelerate_config_file=/lus/eagle/projects/CVD-Mol-AI/braceal/src/genslm-esm/exa
 python_script=/lus/eagle/projects/CVD-Mol-AI/braceal/src/genslm-esm/genslm_esm/train.py
 
 # A specific config file for this run
-config_file=/lus/eagle/projects/CVD-Mol-AI/braceal/src/genslm-esm/examples/ec/configs/ec_aminoacid_8m.yaml
+config_file=/lus/eagle/projects/CVD-Mol-AI/braceal/src/genslm-esm/examples/ec/training_configs/ec_aminoacid_8m.yaml
 
 # launch the job using accelerate, which will spawn the MPI processes (no need for mpiexec)
 accelerate launch \
