@@ -22,6 +22,9 @@ echo "NUM_OF_NODES= ${NNODES} TOTAL_NUM_RANKS= ${NTOTRANKS} RANKS_PER_NODE= ${NR
 cat $PBS_NODEFILE > hostfile 
 sed -e 's/$/ slots=4/' -i hostfile
 
+master_node=$(cat $PBS_NODEFILE| head -1)
+export MASTER_ADDR=$(host $master_node | head -1 | awk '{print $4}')
+
 # Load modules
 module load conda/2023-10-04
 conda activate evoforecast
@@ -43,10 +46,12 @@ fi
 
 config_file="$1"
 
-mpiexec --np ${NTOTRANKS} -ppn ${NRANKS} -d ${NDEPTH} --cpu-bind depth accelerate launch \
- --config_file ${accelerate_config_file} \
- --main_process_ip $(head -1 $PBS_NODEFILE) \
- --main_process_port 29500 \
+ #--main_process_ip ${MASTER_ADDR} \ #$(head -1 $PBS_NODEFILE) \
+#mpiexec --np ${NTOTRANKS} -ppn ${NRANKS} -d ${NDEPTH} --cpu-bind depth accelerate launch \
+accelerate launch \
+--config_file ${accelerate_config_file} \
+ --main_process_ip ${MASTER_ADDR} \
+ --main_process_port 25900 \
  --num_machines ${NNODES} \
  --num_processes $((NTOTRANKS * GPU_PER_NODE)) \
  --deepspeed_hostfile hostfile \
