@@ -36,7 +36,7 @@ conda activate evoforecast
 export HF_HOME=/lus/eagle/projects/CVD-Mol-AI/braceal/cache/huggingface
 
 # The path to the run files
-accelerate_config_file=/lus/eagle/projects/CVD-Mol-AI/braceal/src/genslm-esm/examples/ec/deepspeed_configs/deepspeed_ddp_dynamo_gradient_accumulation_config.yaml
+accelerate_config_file=/lus/eagle/projects/CVD-Mol-AI/braceal/src/genslm-esm/examples/ec/deepspeed_configs/deepspeed_ddp_dynamo_gradient_accumulation.yaml
 python_script=/lus/eagle/projects/CVD-Mol-AI/braceal/src/genslm-esm/genslm_esm/train.py
 
 # A specific config file for this run
