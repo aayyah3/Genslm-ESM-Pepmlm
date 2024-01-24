@@ -163,31 +163,29 @@ class TrainingConfig:
             raise ValueError(
                 "At least one of return_codon or return_aminoacid must be True"
             )
-        #print(self)
+        # print(self)
         output_dir = Path(self.training_args.output_dir)
-        #if False and self.training_args.local_rank <= 0 and (
+        # if False and self.training_args.local_rank <= 0 and (
         #    int(os.environ.get("LOCAL_RANK", 0)) <= 0):
-            #) and (int(os.environ.get("NODE_RANK", 0))):
-        #if self.training_args.process_index() == 0:
+        # ) and (int(os.environ.get("NODE_RANK", 0))):
+        # if self.training_args.process_index() == 0:
 
-        #with self.training_args.main_process_first(local=False): 
-            #output_dir = Path(self.training_args.output_dir)
-            # Setting this environment variable enables wandb logging
-            #resume = output_dir.exists()
-            
+        # with self.training_args.main_process_first(local=False):
+        # output_dir = Path(self.training_args.output_dir)
+        # Setting this environment variable enables wandb logging
+        # resume = output_dir.exists()
+
         # Create the output directory if it doesn't exist
         output_dir.mkdir(exist_ok=True, parents=True)
-            
+
         # wandb needs to be initialized once on all node ranks
         if self.wandb_project and self.training_args.local_process_index == 0:
             os.environ["WANDB_PROJECT"] = self.wandb_project
             # Only resume a run if the output path already exists
-            #output_dir.mkdir(exist_ok=True, parents=True)
+            # output_dir.mkdir(exist_ok=True, parents=True)
             wandb.init(dir=output_dir, group=output_dir.name)
-            wandb.config.update(
-                {"train_config": asdict(self)}, allow_val_change=True
-            )
-    
+            wandb.config.update({"train_config": asdict(self)}, allow_val_change=True)
+
         self.training_args.report_to = ["wandb" if self.wandb_project else ""]
 
         # Log the config to a yaml file
@@ -198,6 +196,7 @@ class TrainingConfig:
 class ClearEvalMemoryTrainer(Trainer):
     def clear_cuda_cache(self) -> None:
         import gc, torch
+
         gc.collect()
         with torch.no_grad():
             torch.cuda.empty_cache()

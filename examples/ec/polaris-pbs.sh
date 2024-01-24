@@ -32,8 +32,9 @@ conda activate evoforecast
 # Set environment variables
 export HF_HOME=/lus/eagle/projects/CVD-Mol-AI/braceal/cache/huggingface
 
-# The path to the accelerate config file
-accelerate_config_file=examples/ec/deepspeed_configs/deepspeed_ddp_dynamo_single_node.yaml
+# The path to the run files
+accelerate_config_file=/lus/eagle/projects/CVD-Mol-AI/braceal/src/genslm-esm/examples/ec/deepspeed_configs/deepspeed_ddp_dynamo_single_node.yaml
+python_script=/lus/eagle/projects/CVD-Mol-AI/braceal/src/genslm-esm/genslm_esm/train.py
 
 # Change to work directory
 cd /lus/eagle/projects/CVD-Mol-AI/braceal/src/genslm-esm
@@ -55,4 +56,4 @@ accelerate launch \
  --num_machines ${NNODES} \
  --num_processes $((NTOTRANKS * GPU_PER_NODE)) \
  --deepspeed_hostfile hostfile \
- genslm_esm/train.py --config ${config_file}
+ ${python_script} --config ${config_file}
