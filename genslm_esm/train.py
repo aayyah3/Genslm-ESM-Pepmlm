@@ -163,30 +163,36 @@ class TrainingConfig:
             raise ValueError(
                 "At least one of return_codon or return_aminoacid must be True"
             )
-        print(self)
+        #print(self)
+        output_dir = Path(self.training_args.output_dir)
+        #if False and self.training_args.local_rank <= 0 and (
+        #    int(os.environ.get("LOCAL_RANK", 0)) <= 0):
+            #) and (int(os.environ.get("NODE_RANK", 0))):
+        #if self.training_args.process_index() == 0:
 
-        if self.training_args.local_rank <= 0 and (
-            int(os.environ.get("LOCAL_RANK", 0)) <= 0
-        ):
-            output_dir = Path(self.training_args.output_dir)
+        #with self.training_args.main_process_first(local=False): 
+            #output_dir = Path(self.training_args.output_dir)
             # Setting this environment variable enables wandb logging
-            if self.wandb_project:
-                os.environ["WANDB_PROJECT"] = self.wandb_project
-                # Only resume a run if the output path already exists
-                resume = output_dir.exists()
-                output_dir.mkdir(exist_ok=True, parents=True)
-                wandb.init(dir=output_dir, resume=resume)
-                wandb.config.update(
-                    {"train_config": asdict(self)}, allow_val_change=True
-                )
-            self.training_args.report_to = ["wandb" if self.wandb_project else ""]
+            #resume = output_dir.exists()
+            
+        # Create the output directory if it doesn't exist
+        output_dir.mkdir(exist_ok=True, parents=True)
+            
+        # wandb needs to be initialized once on all node ranks
+        if self.wandb_project and self.training_args.local_process_index == 0:
+            os.environ["WANDB_PROJECT"] = self.wandb_project
+            # Only resume a run if the output path already exists
+            #output_dir.mkdir(exist_ok=True, parents=True)
+            wandb.init(dir=output_dir, group=output_dir.name)
+            wandb.config.update(
+                {"train_config": asdict(self)}, allow_val_change=True
+            )
+    
+        self.training_args.report_to = ["wandb" if self.wandb_project else ""]
 
-            # Create the output directory if it doesn't exist
-            output_dir.mkdir(exist_ok=True, parents=True)
-
-            # Log the config to a yaml file
-            with open(output_dir / "train_config.yaml", "w") as fp:
-                yaml.dump(asdict(self), fp)
+        # Log the config to a yaml file
+        with open(output_dir / "train_config.yaml", "w") as fp:
+            yaml.dump(asdict(self), fp)
 
 
 class ClearEvalMemoryTrainer(Trainer):
