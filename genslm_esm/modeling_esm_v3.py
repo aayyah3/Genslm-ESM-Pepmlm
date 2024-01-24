@@ -373,21 +373,21 @@ class EsmForContrastiveMaskedLM(EsmForMaskedLM):
         # but not both. If we pass both, then the model will try to stack the amino acid
         # and codon input ids and attention masks as shown above, and this may not be
         # the desired behavior.
-        if codon_input_ids is not None and input_ids is None:
-            input_ids = codon_input_ids
-            assert (
-                codon_attention_mask is not None
-            ), "Please provide codon_attention_mask"
-            attention_mask = codon_attention_mask
-            self.config.compute_codon_loss = True
-            self.config.compute_aminoacid_loss = False
+        #if codon_input_ids is not None and input_ids is None:
+        #    input_ids = codon_input_ids
+        #    assert (
+        #        codon_attention_mask is not None
+        #    ), "Please provide codon_attention_mask"
+        #    attention_mask = codon_attention_mask
+        #    self.config.compute_codon_loss = True
+        #    self.config.compute_aminoacid_loss = False
 
-        if input_ids is not None and codon_input_ids is None:
-            assert (
-                attention_mask is not None
-            ), "Please provide attention_mask for amino acid sequences"
-            self.config.compute_codon_loss = False
-            self.config.compute_aminoacid_loss = True
+        #elif input_ids is not None and codon_input_ids is None:
+        #    assert (
+        #        attention_mask is not None
+        #    ), "Please provide attention_mask for amino acid sequences"
+        #    self.config.compute_codon_loss = False
+        #    self.config.compute_aminoacid_loss = True
 
         outputs = self.esm(
             input_ids,
