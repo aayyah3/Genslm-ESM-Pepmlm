@@ -2,7 +2,7 @@
 #PBS -l select=10:system=polaris
 #PBS -l place=scatter
 #PBS -l filesystems=home:eagle
-#PBS -l walltime=20:00:00
+#PBS -l walltime=24:00:00
 #PBS -q R1220062
 #PBS -A FoundEpidem
 
