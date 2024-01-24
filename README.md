@@ -27,3 +27,8 @@ This submits a 2 node job for 2 hours to the `your_queue` queue charged to `your
 ```console
 qsub -A your_project -q your_queue -l select=2:system=polaris -l walltime=2:00:00 -d /path/to/your/workdir examples/ec/polaris-pbs-v2.sh /lus/eagle/projects/CVD-Mol-AI/braceal/src/genslm-esm/examples/ec/training_configs/ec_aminoacid_8m.yaml
 ```
+
+### Write loss curves to csv
+```console
+genslm-esm aggregate-loss-curves --training_runs_dir runs/ec_prod --output_dir examples/ec/loss_curves
+```
