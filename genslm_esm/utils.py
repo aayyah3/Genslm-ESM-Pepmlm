@@ -59,7 +59,7 @@ def write_loss_curve(run_dir: Path, csv_file: Path) -> None:
     from transformers.trainer_callback import TrainerState
 
     # Load the trainer state wih the full log history
-    state = TrainerState.load_from_json(f"{run_dir / 'trainer_state.json'}")
+    state = TrainerState.load_from_json(str(run_dir / "trainer_state.json"))
 
     # Aggregate data by logging step using defaultdict
     data = defaultdict(dict)
