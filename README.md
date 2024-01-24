@@ -25,5 +25,5 @@ genslm-esm best-checkpoint --train_output_dir <training_dir>
 ## Submit a training run to Polaris
 This submits a 2 node job for 2 hours to the `your_queue` queue charged to `your_project` using the `polaris-pbs.sh` script.
 ```console
-qsub -A your_project -q your_queue -l select=2:system=polaris -l walltime=2:00:00 -d /path/to/your/workdir examples/ec/polaris-pbs.sh configs/ec-v1/ec_contrastive_8m.yaml
+qsub -A your_project -q your_queue -l select=2:system=polaris -l walltime=2:00:00 -d /path/to/your/workdir examples/ec/polaris-pbs-v2.sh /lus/eagle/projects/CVD-Mol-AI/braceal/src/genslm-esm/examples/ec/training_configs/ec_aminoacid_8m.yaml
 ```
