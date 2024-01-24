@@ -43,3 +43,50 @@ def best_checkpoint(output_dir: Path) -> Tuple[float, Path]:
     best_ckpt = output_dir / f"checkpoint-{best_step}"
 
     return best_loss, best_ckpt
+
+
+def write_loss_curve(run_dir: Path, csv_file: Path) -> None:
+    """Utility to parse hugging face trainer state and write loss curve to CSV file.
+
+    Parameters
+    ----------
+    output_dir : Path
+        The directory to write the gathered checkpoints to.
+
+    """
+    import pandas as pd
+    from collections import defaultdict
+    from transformers.trainer_callback import TrainerState
+
+    # Load the trainer state wih the full log history
+    state = TrainerState.load_from_json(f"{run_dir / 'trainer_state.json'}")
+
+    # Aggregate data by logging step using defaultdict
+    data = defaultdict(dict)
+    for entry in state.log_history:
+        data[entry["step"]].update(entry)
+
+    # Convert to DataFrame
+    df = pd.DataFrame(list(data.values()))
+
+    # Write to CSV file
+    df.to_csv(csv_file, index=False)
+
+
+def aggregate_loss_curves(training_runs_dir: Path, output_dir: Path) -> None:
+    """Utility to write the loss curve to CSV for each training run directory.
+
+    Parameters
+    ----------
+    training_runs_dir : Path
+        The directory containing different training run directories.
+
+    output_dir : Path
+        The directory to write the gathered loss curve CSV files to.
+    """
+    # Make the output directory
+    output_dir.mkdir(exist_ok=True)
+
+    # Loop through each training run directory and write the loss curve to CSV
+    for run_dir in filter(lambda x: x.is_dir(), training_runs_dir.glob("*")):
+        write_loss_curve(run_dir, output_dir / f"{run_dir.name}.csv")

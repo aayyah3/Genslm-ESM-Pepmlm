@@ -237,6 +237,27 @@ def collate_checkpoints(
         shutil.copytree(best_ckpt, new_train_output_dir / best_ckpt.name)
 
 
+@app.command()
+def aggregate_loss_curves(
+    training_runs_dir: Path = typer.Option(
+        ...,
+        "--training_runs_dir",
+        "-t",
+        help="The directory containing different training run directories..",
+    ),
+    output_dir: Path = typer.Option(
+        ...,
+        "--output_dir",
+        "-o",
+        help="The directory to write the loss curve CSV files to.",
+    ),
+) -> None:
+    """Utility to write the loss curve to CSV for each training run directory."""
+    from genslm_esm.utils import aggregate_loss_curves
+
+    aggregate_loss_curves(training_runs_dir, output_dir)
+
+
 def main() -> None:
     """Entry point for CLI."""
     app()
