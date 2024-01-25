@@ -10,11 +10,7 @@ import transformers
 from transformers import EsmTokenizer, Trainer
 from transformers.trainer_utils import get_last_checkpoint
 
-from genslm_esm.dataset import (
-    FastaDataset,
-    GenSLMColatorForLanguageModeling_v3,
-    HDF5Dataset,
-)
+from genslm_esm.dataset import FastaDataset, GenSLMColatorForLanguageModeling_v3
 from genslm_esm.modeling_esm_v3 import EsmForContrastiveMaskedLM
 
 
@@ -217,13 +213,12 @@ def main():
     model.update_model_weights(tokenizer)
 
     # Construct the train and validation datasets
-    dset_class = HDF5Dataset if config.train_path.endswith(".h5") else FastaDataset
-    train_dataset = dset_class(
+    train_dataset = FastaDataset(
         file_path=config.train_path,
         return_codon=config.compute_codon_loss,
         return_aminoacid=config.compute_aminoacid_loss,
     )
-    eval_dataset = dset_class(
+    eval_dataset = FastaDataset(
         file_path=config.eval_path,
         return_codon=config.compute_codon_loss,
         return_aminoacid=config.compute_aminoacid_loss,
