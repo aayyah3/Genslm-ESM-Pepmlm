@@ -1,5 +1,5 @@
 training_args:
-  output_dir: /lus/eagle/projects/CVD-Mol-AI/braceal/src/genslm-esm/runs/patric_prod/patric_aminoacid_8m
+  output_dir: /lus/eagle/projects/CVD-Mol-AI/braceal/src/genslm-esm/runs/patric_prod/patric_contrastive_8m
   num_train_epochs: 10
   per_device_train_batch_size: 4
   per_device_eval_batch_size: 4
@@ -10,9 +10,9 @@ training_args:
   save_steps: 1000
   label_names: ["labels"]
 
-compute_codon_loss: false
+compute_codon_loss: true
 compute_aminoacid_loss: true
-compute_contrastive_loss: false
+compute_contrastive_loss: true
 contrastive_temperature: 0.1
 contrastive_pooler: mean
 base_model: facebook/esm2_t6_8M_UR50D
