@@ -8,7 +8,7 @@ import wandb
 import yaml
 import json
 import transformers
-from transformers import EsmTokenizer, Trainer
+from transformers import EsmTokenizer, Trainer, EsmConfig
 from transformers.trainer_utils import get_last_checkpoint
 
 from genslm_esm.dataset import (
@@ -224,7 +224,7 @@ def main():
     if config.base_model.endswith(".json"):
         # Load the json config
         with open(config.base_model) as fp:
-            model_config = json.load(fp)
+            model_config = EsmConfig(**json.load(fp))
 
         # Load the model from the config
         model = EsmForContrastiveMaskedLM(
