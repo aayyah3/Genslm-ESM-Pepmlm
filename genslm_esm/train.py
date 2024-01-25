@@ -1,8 +1,9 @@
+from __future__ import annotations
+
 import os
 from argparse import ArgumentParser
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Dict
 import wandb
 import yaml
 import transformers
@@ -15,15 +16,6 @@ from genslm_esm.dataset import (
     HDF5Dataset,
 )
 from genslm_esm.modeling_esm_v3 import EsmForContrastiveMaskedLM
-
-# TODO: Set set_lr_scheduler using max_steps
-# TODO: Could run a couple lr's on the small model to see what works best
-# TODO: Can try a random weight init to compare our results (if it's just the
-#       dataset that's hard, then scale should also help).
-# TODO: Might need to add a hostfile to the accelerate api --deepspeed_hostfile DEEPSPEED_HOSTFILE
-# TODO: Try stage 0 deepspeed --deepspeed_config_file DEEPSPEED_CONFIG_FILE
-# TODO: Setup runs so that the global token batch size is constant across the different models.
-# Current ds config: ../../cache/huggingface/accelerate/default_config.yaml
 
 
 @dataclass
@@ -165,15 +157,6 @@ class TrainingConfig:
             )
         # print(self)
         output_dir = Path(self.training_args.output_dir)
-        # if False and self.training_args.local_rank <= 0 and (
-        #    int(os.environ.get("LOCAL_RANK", 0)) <= 0):
-        # ) and (int(os.environ.get("NODE_RANK", 0))):
-        # if self.training_args.process_index() == 0:
-
-        # with self.training_args.main_process_first(local=False):
-        # output_dir = Path(self.training_args.output_dir)
-        # Setting this environment variable enables wandb logging
-        # resume = output_dir.exists()
 
         # Create the output directory if it doesn't exist
         output_dir.mkdir(exist_ok=True, parents=True)
@@ -181,8 +164,8 @@ class TrainingConfig:
         # wandb needs to be initialized once on all node ranks
         if self.wandb_project and self.training_args.local_process_index == 0:
             os.environ["WANDB_PROJECT"] = self.wandb_project
-            # Only resume a run if the output path already exists
-            # output_dir.mkdir(exist_ok=True, parents=True)
+            # Assign the same group name as the output directory
+            # so that multi-node runs are grouped together
             wandb.init(dir=output_dir, group=output_dir.name)
             wandb.config.update({"train_config": asdict(self)}, allow_val_change=True)
 
@@ -194,15 +177,18 @@ class TrainingConfig:
 
 
 class ClearEvalMemoryTrainer(Trainer):
+    """Trainer that clears the cuda cache before each evaluation (reduces OOMs for some models)."""
+
     def clear_cuda_cache(self) -> None:
-        import gc, torch
+        import gc
+        import torch
 
         gc.collect()
         with torch.no_grad():
             torch.cuda.empty_cache()
             torch.clear_autocast_cache()
 
-    def evaluate(self, *args, **kwargs) -> Dict[str, float]:
+    def evaluate(self, *args, **kwargs) -> dict[str, float]:
         self.clear_cuda_cache()
         return super().evaluate(*args, **kwargs)
 
