@@ -10,7 +10,7 @@ import transformers
 from transformers import EsmTokenizer, Trainer
 from transformers.trainer_utils import get_last_checkpoint
 
-from genslm_esm.dataset import FastaDataset, GenSLMColatorForLanguageModeling_v3
+from genslm_esm.dataset import FastaDataset, GenSLMColatorForLanguageModeling
 from genslm_esm.modeling_esm_v3 import EsmForContrastiveMaskedLM
 
 
@@ -224,7 +224,7 @@ def main():
         return_aminoacid=config.compute_aminoacid_loss,
     )
 
-    data_collator = GenSLMColatorForLanguageModeling_v3(
+    data_collator = GenSLMColatorForLanguageModeling(
         return_codon=config.compute_codon_loss,
         return_aminoacid=config.compute_aminoacid_loss,
         train_mode=True,

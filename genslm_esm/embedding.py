@@ -11,7 +11,7 @@ from genslm_esm.modeling_esm_v3 import EsmForContrastiveMaskedLM
 from genslm_esm.dataset import (
     FastaAminoAcidDataset,
     FastaDataset,
-    GenSLMColatorForLanguageModeling_v3,
+    GenSLMColatorForLanguageModeling,
 )
 
 
@@ -56,7 +56,7 @@ def embedding_inference(
             return_aminoacid=return_aminoacid,
         )
 
-    data_collator = GenSLMColatorForLanguageModeling_v3(
+    data_collator = GenSLMColatorForLanguageModeling(
         return_codon=return_codon,
         return_aminoacid=return_aminoacid,
         tokenizer=tokenizer,
