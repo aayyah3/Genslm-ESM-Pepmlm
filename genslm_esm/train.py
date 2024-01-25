@@ -10,7 +10,12 @@ import transformers
 from transformers import EsmTokenizer, Trainer
 from transformers.trainer_utils import get_last_checkpoint
 
-from genslm_esm.dataset import FastaDataset, GenSLMColatorForLanguageModeling
+from genslm_esm.dataset import (
+    FastaDataset,
+    HDF5Dataset,
+    SequenceHomologySampler,
+    GenSLMColatorForLanguageModeling,
+)
 from genslm_esm.modeling_esm_v3 import EsmForContrastiveMaskedLM
 
 
@@ -121,6 +126,17 @@ class TrainingConfig:
         default="tokenizer_esm_genslm",
         metadata={"help": "Path to tokenizer to use for training."},
     )
+    sequence_homology_path: str = field(
+        default="",
+        metadata={"help": "Path to sequence homology cluster map (.npy)."},
+    )
+    num_eval_samples_per_epoch: int | None = field(
+        default=None,
+        metadata={
+            "help": "Number of samples to use for evaluation per epoch. "
+            "If None, use all samples."
+        },
+    )
     compute_codon_loss: bool = field(
         default=True, metadata={"help": "Whether to compute codon loss."}
     )
@@ -213,16 +229,39 @@ def main():
     model.update_model_weights(tokenizer)
 
     # Construct the train and validation datasets
-    train_dataset = FastaDataset(
-        file_path=config.train_path,
-        return_codon=config.compute_codon_loss,
-        return_aminoacid=config.compute_aminoacid_loss,
-    )
-    eval_dataset = FastaDataset(
-        file_path=config.eval_path,
-        return_codon=config.compute_codon_loss,
-        return_aminoacid=config.compute_aminoacid_loss,
-    )
+    if config.train_path.endswith(".h5"):
+        # If provided and HDF5 file, use the SequenceHomologySampler
+        # which samples sequences from diverse clusters with high sequence homology
+        hdf5_sampler = SequenceHomologySampler(
+            file_path=config.sequence_homology_path,
+            num_eval_samples=config.num_eval_samples_per_epoch,
+        )
+        train_dataset = HDF5Dataset(
+            split="train",
+            file_path=config.train_path,
+            hdf5_sampler=hdf5_sampler,
+            return_codon=config.compute_codon_loss,
+            return_aminoacid=config.compute_aminoacid_loss,
+        )
+        # Use the same file for HDF5 eval (with different split)
+        eval_dataset = HDF5Dataset(
+            split="eval",
+            file_path=config.train_path,
+            hdf5_sampler=hdf5_sampler,
+            return_codon=config.compute_codon_loss,
+            return_aminoacid=config.compute_aminoacid_loss,
+        )
+    else:  # Fall back to fasta dataset
+        train_dataset = FastaDataset(
+            file_path=config.train_path,
+            return_codon=config.compute_codon_loss,
+            return_aminoacid=config.compute_aminoacid_loss,
+        )
+        eval_dataset = FastaDataset(
+            file_path=config.eval_path,
+            return_codon=config.compute_codon_loss,
+            return_aminoacid=config.compute_aminoacid_loss,
+        )
 
     data_collator = GenSLMColatorForLanguageModeling(
         return_codon=config.compute_codon_loss,
