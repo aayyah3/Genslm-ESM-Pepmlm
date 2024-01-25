@@ -323,7 +323,7 @@ class StandardSampler(HDF5SequenceSampler):
         return inds[idx]
 
 
-class SequenceHomologySampler:
+class SequenceHomologySampler(HDF5SequenceSampler):
     """
     This dataset requires mmseqs easycluster files to be made.
 
