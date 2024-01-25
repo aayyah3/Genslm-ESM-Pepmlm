@@ -399,6 +399,15 @@ class SequenceHomologySampler(HDF5SequenceSampler):
         # indices of the sequences within that cluster
         md5_idx_to_h5_idx: np.ndarray = np.load(file_path, allow_pickle=True)
 
+        # If any of the clusters have fewer than 2 sequences, merge them into the same cluster
+        # This is necessary because we need at least 2 sequences in each cluster to split into train and eval
+        for cluster_idx, cluster in enumerate(md5_idx_to_h5_idx):
+            if len(cluster) < 2:
+                # Merge the cluster into the first cluster
+                md5_idx_to_h5_idx[0] = np.concatenate([md5_idx_to_h5_idx[0], cluster])
+                # Remove the cluster from the list of clusters
+                md5_idx_to_h5_idx = np.delete(md5_idx_to_h5_idx, cluster_idx)
+
         # Set the random seed for reproducibility
         np.random.seed(seed)
 
