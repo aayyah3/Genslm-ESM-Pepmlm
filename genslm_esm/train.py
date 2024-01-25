@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 import wandb
 import yaml
+import json
 import transformers
 from transformers import EsmTokenizer, Trainer
 from transformers.trainer_utils import get_last_checkpoint
@@ -120,7 +121,9 @@ class TrainingConfig:
     )
     base_model: str = field(
         default="facebook/esm2_t6_8M_UR50D",
-        metadata={"help": "Base model to use for training."},
+        metadata={
+            "help": "Base model to use for training. Or path to model config json file."
+        },
     )
     tokenizer_path: str = field(
         default="tokenizer_esm_genslm",
@@ -213,16 +216,35 @@ def main():
     with open(args.config) as fp:
         config = TrainingConfig(**yaml.safe_load(fp))
 
-    # Load the tokenizer and model
+    # Load the tokenizer
     tokenizer = EsmTokenizer.from_pretrained(config.tokenizer_path)
-    model = EsmForContrastiveMaskedLM.from_pretrained(
-        config.base_model,
-        compute_aminoacid_loss=config.compute_aminoacid_loss,
-        compute_codon_loss=config.compute_codon_loss,
-        compute_contrastive_loss=config.compute_contrastive_loss,
-        contrastive_temperature=config.contrastive_temperature,
-        contrastive_pooler=config.contrastive_pooler,
-    )
+
+    # If we receive a hugging face json file instead of a model
+    # name, load the config from that
+    if config.base_model.endswith(".json"):
+        # Load the json config
+        with open(config.base_model) as fp:
+            model_config = json.load(fp)
+
+        # Load the model from the config
+        model = EsmForContrastiveMaskedLM(
+            config=model_config,
+            compute_aminoacid_loss=config.compute_aminoacid_loss,
+            compute_codon_loss=config.compute_codon_loss,
+            compute_contrastive_loss=config.compute_contrastive_loss,
+            contrastive_temperature=config.contrastive_temperature,
+            contrastive_pooler=config.contrastive_pooler,
+        )
+    else:
+        # Load the model from the model name
+        model = EsmForContrastiveMaskedLM.from_pretrained(
+            config.base_model,
+            compute_aminoacid_loss=config.compute_aminoacid_loss,
+            compute_codon_loss=config.compute_codon_loss,
+            compute_contrastive_loss=config.compute_contrastive_loss,
+            contrastive_temperature=config.contrastive_temperature,
+            contrastive_pooler=config.contrastive_pooler,
+        )
 
     # If the number of tokens in the tokenizer is different from the number of tokens
     # in the model resize the input embedding layer and the MLM prediction head
