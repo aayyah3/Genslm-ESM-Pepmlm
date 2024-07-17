@@ -60,9 +60,20 @@ def write_loss_curve(run_dir: Path, csv_file: Path) -> None:
 
     # Check if the trainer state exists
     trainer_state_json = run_dir / "trainer_state.json"
+
+    # If trainer state doesn't exist then load the best checkpoint instead
     if not trainer_state_json.exists():
-        print(f"Trainer state does not exist for {run_dir}")
-        return
+        print(
+            f"Trainer state does not exist for {run_dir}. "
+            "Loading best checkpoint instead ..."
+        )
+        # Get the checkpoint directories in order
+        ckpt_dirs = list(Path(run_dir).glob("checkpoint-*"))
+        ckpt_dirs = list(sorted(ckpt_dirs, key=lambda x: int(str(x).split("-")[1])))
+        last_ckpt = ckpt_dirs[-1]
+
+        # Load the trainer state wih the full log history
+        trainer_state_json = last_ckpt / "trainer_state.json"
 
     # Load the trainer state wih the full log history
     state = TrainerState.load_from_json(str(trainer_state_json))
