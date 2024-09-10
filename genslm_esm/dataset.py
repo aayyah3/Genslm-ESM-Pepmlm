@@ -171,19 +171,27 @@ def random_split_fasta(
 class FastaDataset(Dataset):
     def __init__(
         self,
-        file_path: PathLike,
+        file_path: PathLike | None = None,
+        sequences: List[Sequence] | None = None,
         return_codon: bool = True,
         return_aminoacid: bool = False,
     ) -> None:
         self.return_codon = return_codon
         self.return_aminoacid = return_aminoacid
 
+        if file_path is None and sequences is None:
+            raise ValueError("Either file_path or sequences must be provided.")
+
         # Read the fasta file
-        dna_sequenes = self.read_fasta_only_seq(file_path)
+        if sequences is None:
+            dna_sequenes = self.read_fasta_only_seq(file_path)
+        else:
+            dna_sequenes = sequences
+
         # Preprocess the sequences into codons
         # TODO: We could also use an <unk> token (this would be better)
         self.sequences = [
-            group_codons(seq) for seq in dna_sequenes if len(seq) % 3 == 0
+            group_codons(seq) for seq in dna_sequenes
         ]
 
     def read_fasta_only_seq(self, fasta_file: PathLike) -> List[str]:
@@ -222,8 +230,14 @@ class FastaDataset(Dataset):
 class FastaAminoAcidDataset(FastaDataset):
     """Assumes the fasta file contains amino acid sequences."""
 
-    def __init__(self, file_path: PathLike) -> None:
-        self.sequences = self.read_fasta_only_seq(file_path)
+    def __init__(self, file_path: PathLike | None = None, sequences: List[Sequence] | None = None) -> None:
+        if file_path is None and sequences is None:
+            raise ValueError("Either file_path or sequences must be provided.")
+
+        if sequences is None:
+            self.sequences = self.read_fasta_only_seq(file_path)
+        else:
+            self.sequences = sequences
 
     def __getitem__(self, idx: int) -> Dict[str, str]:
         return {"aminoacid": self.sequences[idx]}
