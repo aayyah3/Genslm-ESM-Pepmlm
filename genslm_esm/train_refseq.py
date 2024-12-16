@@ -19,11 +19,14 @@ from genslm_esm.dataset import (
 )
 from genslm_esm.refseq_dataset import (
     MultiEpochScannerSequenceDataset,
+    ScannerSequenceDataset,
     HDF5Dataset,
     RefSeqCollator,
 )
-from genslm_esm.modeling_esmc import EsmCForContrastiveMaskedLM
-
+from genslm_esm.modeling_esmc import (
+                    EsmCForContrastiveMaskedLM, 
+                    ContrastiveEsmConfig
+)
 
 @dataclass
 class TrainingArguments(transformers.TrainingArguments):
@@ -93,11 +96,11 @@ class TrainingArguments(transformers.TrainingArguments):
         },
     )
     fp16: bool = field(
-        default=True,
+        default=False,
         metadata={"help": "Whether to use 16-bit (mixed) precision training."},
     )
     dataloader_num_workers: int = field(
-        default=4,
+        default=1,
         metadata={"help": "Number of subprocesses to use for data loading."},
     )
     remove_unused_columns: bool = field(
@@ -124,11 +127,15 @@ class TrainingConfig:
         default="data/mdh/valid.fasta",
         metadata={"help": "Path to validation data."},
     )
-    base_model: str = field(
-        default="facebook/esm2_t6_8M_UR50D",
+    base_model_path: str = field(
+        default=None,
         metadata={
-            "help": "Base model to use for training. Or path to model config json file."
+            "help": "Base model to use for training. Or path to checkpoint to cpt from"
         },
+    )
+    model_name: str = field(
+        default=None,
+        metadata={"help": "Model designation choosing from ESMC_300M or ESMC_600M"},
     )
     tokenizer_path: str = field(
         default="tokenizer_esm_genslm",
@@ -182,11 +189,14 @@ class TrainingConfig:
         output_dir.mkdir(exist_ok=True, parents=True)
 
         # wandb needs to be initialized once on all node ranks
-        if self.wandb_project and self.training_args.local_process_index == 0:
+        if self.wandb_project and self.training_args.process_index == 0:
             os.environ["WANDB_PROJECT"] = self.wandb_project
+            run_name = os.environ.get("WANDB_RUN_NAME", None)
             # Assign the same group name as the output directory
             # so that multi-node runs are grouped together
-            wandb.init(dir=output_dir, group=output_dir.name)
+            wandb.init(dir=output_dir, 
+                        group=output_dir.name,
+                        name=run_name,)
             wandb.config.update({"train_config": asdict(self)}, allow_val_change=True)
 
         self.training_args.report_to = ["wandb" if self.wandb_project else ""]
@@ -226,70 +236,28 @@ def main():
 
     # If we receive a hugging face json file instead of a model
     # name, load the config from that
-    if config.base_model.endswith(".json"):
-        # Load the json config
-        with open(config.base_model) as fp:
-            model_config = EsmConfig(**json.load(fp))
-
-        # Load the model from the config
-        model = EsmForContrastiveMaskedLM(
-            config=model_config,
-            compute_aminoacid_loss=config.compute_aminoacid_loss,
-            compute_codon_loss=config.compute_codon_loss,
-            compute_contrastive_loss=config.compute_contrastive_loss,
-            contrastive_temperature=config.contrastive_temperature,
-            contrastive_pooler=config.contrastive_pooler,
-        )
-    else:
-        # Load the model from the model name
-        model = EsmForContrastiveMaskedLM.from_pretrained(
-            config.base_model,
-            compute_aminoacid_loss=config.compute_aminoacid_loss,
-            compute_codon_loss=config.compute_codon_loss,
-            compute_contrastive_loss=config.compute_contrastive_loss,
-            contrastive_temperature=config.contrastive_temperature,
-            contrastive_pooler=config.contrastive_pooler,
-        )
-
+    model_config = ContrastiveEsmConfig(
+        model_name = config.model_name,
+        base_model_path = config.base_model_path,
+        tokenizer_name_or_path = config.tokenizer_path,
+        compute_codon_loss = config.compute_codon_loss,
+        compute_aminoacid_loss = config.compute_aminoacid_loss,
+        compute_contrastive_loss = config.compute_contrastive_loss,
+        contrastive_temperature = config.contrastive_temperature,
+        contrastive_pooler = config.contrastive_pooler,
+    )
+    model = EsmCForContrastiveMaskedLM(model_config)
     # If the number of tokens in the tokenizer is different from the number of tokens
     # in the model resize the input embedding layer and the MLM prediction head
     model.update_model_weights(tokenizer)
 
     # Construct the train and validation datasets
-    if config.train_path.endswith(".h5"):
-        # If provided and HDF5 file, use the SequenceHomologySampler
-        # which samples sequences from diverse clusters with high sequence homology
-        hdf5_sampler = SequenceHomologySampler(
-            file_path=config.sequence_homology_path,
-            num_eval_samples=config.num_eval_samples_per_epoch,
-        )
-        train_dataset = HDF5Dataset(
-            split="train",
-            file_path=config.train_path,
-            hdf5_sampler=hdf5_sampler,
-            return_codon=config.compute_codon_loss,
-            return_aminoacid=config.compute_aminoacid_loss,
-        )
-        # Use the same file for HDF5 eval (with different split)
-        eval_dataset = HDF5Dataset(
-            split="eval",
-            file_path=config.train_path,
-            hdf5_sampler=hdf5_sampler,
-            return_codon=config.compute_codon_loss,
-            return_aminoacid=config.compute_aminoacid_loss,
-        )
-    else:  # Fall back to fasta dataset
-        train_dataset = FastaDataset(
-            file_path=config.train_path,
-            return_codon=config.compute_codon_loss,
-            return_aminoacid=config.compute_aminoacid_loss,
-        )
-        eval_dataset = FastaDataset(
-            file_path=config.eval_path,
-            return_codon=config.compute_codon_loss,
-            return_aminoacid=config.compute_aminoacid_loss,
-        )
-
+    train_dataset = MultiEpochScannerSequenceDataset(
+        config.train_path,
+    )
+    eval_dataset = ScannerSequenceDataset(
+        config.eval_path,
+    )
     data_collator = GenSLMColatorForLanguageModeling(
         return_codon=config.compute_codon_loss,
         return_aminoacid=config.compute_aminoacid_loss,

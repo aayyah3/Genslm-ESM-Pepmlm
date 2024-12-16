@@ -71,10 +71,10 @@ class ScannerSequenceDataset(IterableDataset):
 
                 # print(f"Sequence: {sequence}")
                 # TODO: either need a collator or a tokenizer for the sequence
-                yield [
-                    id_,
-                    sequence,
-                ]
+                yield {
+                    "id": id_,
+                    "aminoacid": sequence,
+                }
 class MultiEpochScannerSequenceDataset(IterableDataset):
     # To work with MP in the dataloader we need to handle it explicitly
     # see https://pytorch.org/docs/stable/data.html#torch.utils.data.IterableDataset
@@ -108,10 +108,10 @@ class MultiEpochScannerSequenceDataset(IterableDataset):
                     id_ = data["id"][i]
 
                     # Yield data from the current epoch
-                    yield [
-                        id_,
-                        sequence,
-                    ]
+                    yield {
+                        "id": id_,
+                        "aminoacid": sequence,
+                    }
 
 class HDF5Dataset(Dataset):
     def __init__(self, h5_filepath):
