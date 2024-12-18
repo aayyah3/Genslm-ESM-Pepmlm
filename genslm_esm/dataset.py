@@ -594,7 +594,7 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
             # 'B': 25, 'U': 26, 'Z': 27, 'O': 28, '.': 29, '-': 30, '<null_1>': 31, '<mask>': 32,
             # Note: we also avoid sampling the special tokens '<cls>': 0, '<pad>': 1, '<eos>': 2, '<unk>': 3,
             amino_batch = self.torch_call_helper(
-                [e["aminoacid"] for e in examples], low=4, high=23
+                [e["aminoacid"] for e in examples], low=4, high=24
             )
 
         if self.return_codon and self.return_aminoacid:
