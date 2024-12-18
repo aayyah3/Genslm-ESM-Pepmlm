@@ -40,10 +40,12 @@ class InMemorySequenceDataset(Dataset):
 
 # Scanning dataset
 class ScannerSequenceDataset(IterableDataset):
-    def __init__(self, parquet_file, batch_size=1024):
+    def __init__(self, parquet_file, batch_size=1024, return_aminoacid=True, return_codon=False):
         # Initialize the dataset
         self.parquet_file = parquet_file
         self.batch_size = batch_size
+        self.return_aminoacid = return_aminoacid
+        self.return_codon = return_codon
 
     def __iter__(self):
         # Create a PyArrow dataset
@@ -51,7 +53,7 @@ class ScannerSequenceDataset(IterableDataset):
 
         # Only need to read the 'id' and 'sequence' columns
         # Columns present: ['id', 'sequence', 'description', 'cluster_head', 'training_cluster']
-        columns = ["id", "sequence"]
+        columns = ["id", "nuceleotide", "aminoacid"]
 
         # Create a scanner with the specified columns and batch size
         # Note this batch size is not the same as the DataLoader batch size,
@@ -66,25 +68,39 @@ class ScannerSequenceDataset(IterableDataset):
 
             for i in range(num_rows):
                 # Extract sequence and other fields
-                sequence = ' '.join([c for c in data["sequence"][i]])
+                aa_sequence = None
+                codon_sequence = None
+                if self.return_aminoacid:
+                    aa_sequence = ' '.join([c for c in data["aminoacid"][i]])
+                if self.return_codon:
+                    # have to split the codons by 3-mers
+                    codon_sequence = data['nucleotide'][i]
+                    codon_sequence = ' '.join([codon_sequence[i:i+3] for i in range(0, len(codon_sequence), 3)])
                 id_ = data["id"][i]
 
                 # print(f"Sequence: {sequence}")
                 # TODO: either need a collator or a tokenizer for the sequence
                 yield {
                     "id": id_,
-                    "aminoacid": sequence,
+                    "aminoacid": aa_sequence,
+                    "codon": codon_sequence
                 }
 class MultiEpochScannerSequenceDataset(IterableDataset):
     # To work with MP in the dataloader we need to handle it explicitly
     # see https://pytorch.org/docs/stable/data.html#torch.utils.data.IterableDataset
-    def __init__(self, parquet_files: list[str], batch_size: int = 1024):
+    def __init__(self, parquet_files: list[str], 
+            batch_size: int = 1024, 
+            return_aminoacid: bool = True, 
+            return_codon: bool = False
+            ):
         """
         parquet_files: List of Parquet file paths, one for each epoch.
         batch_size: Number of rows to read at once from the Parquet file.
         """
         self.parquet_files = parquet_files
         self.batch_size = batch_size
+        self.return_aminoacid = return_aminoacid
+        self.return_codon = return_codon
 
     def __iter__(self):
         # Iterate over each epoch's Parquet file
@@ -93,7 +109,7 @@ class MultiEpochScannerSequenceDataset(IterableDataset):
             dataset = ds.dataset(parquet_file, format="parquet")
 
             # Only need to read the 'id' and 'sequence' columns
-            columns = ["id", "sequence"]
+            columns = ["id", "nucleotide", "aminoacid"]
 
             # Create a scanner for the current file
             scanner = dataset.scanner(columns=columns, batch_size=self.batch_size)
@@ -104,13 +120,20 @@ class MultiEpochScannerSequenceDataset(IterableDataset):
                 num_rows = len(data["id"])
 
                 for i in range(num_rows):
-                    sequence = ' '.join([c for c in data["sequence"][i]])
+                    aa_sequence = None
+                    codon_sequence = None
+                    if self.return_aminoacid:
+                        aa_sequence = ' '.join([c for c in data["aminoacid"][i]])
+                    if self.return_codon:
+                        codon_sequence = data['nucleotide'][i]
+                        codon_sequence = ' '.join([codon_sequence[i:i+3] for i in range(0, len(codon_sequence), 3)])
                     id_ = data["id"][i]
 
                     # Yield data from the current epoch
                     yield {
                         "id": id_,
-                        "aminoacid": sequence,
+                        "aminoacid": aa_sequence,
+                        "codon": codon_sequence
                     }
 
 class HDF5Dataset(Dataset):
