@@ -90,6 +90,13 @@ class ContrastiveLoss(nn.Module):
         # NOTE: z.shape == (batch_size, hidden_size)
         # TODO: Can we cache the pos_mask calculation with lru_cache?
         batch_size = z.shape[0]
+        z_all = [torch.empty_like(z) for _ in range(size)]
+        # gather all the tensors 
+        torch.distributed.allgather(z_all, z)
+        # replace local rank information so gradients propagate
+        z_all[rank] = z
+        # concatenate all the tensors on batch dimension
+        z = torch.cat(z_all, dim=0)
         # Calculate cosine similarity
         cos_sim = F.cosine_similarity(z[:, None, :], z[None, :, :], dim=-1)
         # Mask out cosine similarity to itself
