@@ -53,7 +53,7 @@ class ScannerSequenceDataset(IterableDataset):
 
         # Only need to read the 'id' and 'sequence' columns
         # Columns present: ['id', 'sequence', 'description', 'cluster_head', 'training_cluster']
-        columns = ["id", "nuceleotide", "aminoacid"]
+        columns = ["id", "nucleotide", "aminoacid"]
 
         # Create a scanner with the specified columns and batch size
         # Note this batch size is not the same as the DataLoader batch size,
@@ -135,21 +135,69 @@ class MultiEpochScannerSequenceDataset(IterableDataset):
                         "aminoacid": aa_sequence,
                         "codon": codon_sequence
                     }
+class HDF5SequenceDataset(Dataset):
+    def __init__(self, h5_filepath,
+            return_aminoacid=True, 
+            return_codon=True
+            ): 
+        self.return_aminoacid = return_aminoacid
+        self.return_codon = return_codon
+        self.h5_files = sorted(glob.glob(h5_filepath))
+        samples_per_file = []
+        for file in self.h5_files:
+            with h5py.File(file, 'r') as data:
+                samples_per_file.append(data['aminoacid'].shape[0])
+        self.cum_samples_per_file = np.cumsum(samples_per_file)
+        self.printed = False
+    def __len__(self):
+        return self.cum_samples_per_file[-1]
+    
+    def __getitem__(self, idx):
+        file_idx = np.digitize(idx, self.cum_samples_per_file)
+        if file_idx == 0:
+            sample_idx = idx
+        else:
+            sample_idx = idx - self.cum_samples_per_file[file_idx-1]
+        aa_sequence = None
+        codon_sequence = None
+        with h5py.File(self.h5_files[file_idx], 'r') as data:
+            if self.return_aminoacid:
+                # decode "bytes" to string
+                aa_sequence = data['aminoacid'][sample_idx].decode('utf-8')
+            if self.return_codon:
+                codon_sequence = data['codon'][sample_idx].decode('utf-8')
+    
+            id_ = None #legacy
+
+        if not self.printed:
+            import torch.distributed as dist
+            rank = dist.get_rank()
+            if rank == 0:
+                print(f"{aa_sequence=}")
+                print(f"{codon_sequence}")
+            self.printed = True
+        
+        return {
+            "id": id_,
+            "aminoacid": aa_sequence,
+            "codon": codon_sequence
+        }
+
 
 class HDF5Dataset(Dataset):
     def __init__(self, h5_filepath):
-        self.h5_files = sorted(glob.glob(h5_filepath+'*.h5'))
+        self.h5_files = sorted(glob.glob(h5_filepath))
+        print(f"Found {len(self.h5_files)} files in {h5_filepath}", flush=True)
         # print(f"Found {len(self.h5_files)} files in {h5_filepath}")
         # print('\n'.join(self.h5_files))
         self.data = []
-        self.cum_samples_per_file = []
+        samples_per_file = []
         for i, file in enumerate(self.h5_files):
             with h5py.File(file, 'r') as data:
-                if i == 0:
-                    self.cum_samples_per_file.append(data['input_ids'].shape[0]-1)
-                else:
-                    self.cum_samples_per_file.append(data['input_ids'].shape[0]-1)
-        self.cum_samples_per_file = np.cumsum(self.cum_samples_per_file)
+                samples_per_file.append(data['input_ids'].shape[0])
+        self.cum_samples_per_file = np.cumsum(samples_per_file)
+        print(f"Samples per file: {samples_per_file}", flush=True)
+
     def __len__(self):
         return self.cum_samples_per_file[-1]
 

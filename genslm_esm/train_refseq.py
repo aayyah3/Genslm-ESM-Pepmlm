@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import torch
 from argparse import ArgumentParser
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -21,6 +22,7 @@ from genslm_esm.refseq_dataset import (
     MultiEpochScannerSequenceDataset,
     ScannerSequenceDataset,
     HDF5Dataset,
+    HDF5SequenceDataset,
     RefSeqCollator,
 )
 from genslm_esm.modeling_esmc import (
@@ -69,7 +71,7 @@ class TrainingArguments(transformers.TrainingArguments):
         metadata={"help": "The weight decay to apply."},
     )
     eval_steps: int = field(
-        default=500,
+        default=None,
         metadata={
             "help": "Number of steps between evaluations. If `eval_steps` "
             "is modified, update `logging_steps` and `save_steps` to the same value."
@@ -84,7 +86,7 @@ class TrainingArguments(transformers.TrainingArguments):
         metadata={"help": "Strategy for saving checkpoints."},
     )
     evaluation_strategy: str = field(
-        default="steps",
+        default=None,
         metadata={"help": "Strategy for evaluating."},
     )
     load_best_model_at_end: bool = field(
@@ -124,7 +126,7 @@ class TrainingConfig:
         metadata={"help": "Path to training data."},
     )
     eval_path: str = field(
-        default="data/mdh/valid.fasta",
+        default=None,
         metadata={"help": "Path to validation data."},
     )
     base_model_path: str = field(
@@ -189,17 +191,17 @@ class TrainingConfig:
         output_dir.mkdir(exist_ok=True, parents=True)
 
         # wandb needs to be initialized once on all node ranks
-        if self.wandb_project and self.training_args.process_index == 0:
-            os.environ["WANDB_PROJECT"] = self.wandb_project
-            run_name = os.environ.get("WANDB_RUN_NAME", None)
-            # Assign the same group name as the output directory
-            # so that multi-node runs are grouped together
-            wandb.init(dir=output_dir, 
-                        group=output_dir.name,
-                        name=run_name,)
-            wandb.config.update({"train_config": asdict(self)}, allow_val_change=True)
+        # if self.wandb_project and self.training_args.local_process_index == 0:
+        #     os.environ["WANDB_PROJECT"] = self.wandb_project
+        #     run_name = os.environ.get("WANDB_RUN_NAME", None)
+        #     # Assign the same group name as the output directory
+        #     # so that multi-node runs are grouped together
+        #     wandb.init(dir=output_dir, 
+        #                 group=output_dir.name,
+        #                 name=run_name,)
+        #     wandb.config.update({"train_config": asdict(self)}, allow_val_change=True)
 
-        self.training_args.report_to = ["wandb" if self.wandb_project else ""]
+        # self.training_args.report_to = None #["wandb" if self.wandb_project else ""]
 
         # Log the config to a yaml file
         with open(output_dir / "train_config.yaml", "w") as fp:
@@ -247,17 +249,39 @@ def main():
         contrastive_pooler = config.contrastive_pooler,
     )
     model = EsmCForContrastiveMaskedLM(model_config)
+    # for param in model.parameters():
+    #     param.to(torch.bfloat16)
     # If the number of tokens in the tokenizer is different from the number of tokens
     # in the model resize the input embedding layer and the MLM prediction head
     model.update_model_weights(tokenizer)
 
+    if 'h5' in config.train_path:
+        print('Using HDF5 dataset')
+        train_dataset = HDF5SequenceDataset(
+            config.train_path,
+            return_aminoacid=config.compute_aminoacid_loss,
+            return_codon=config.compute_codon_loss,
+        )
+        if config.eval_path:
+            eval_dataset = HDF5SequenceDataset(
+            config.eval_path,
+            return_aminoacid=config.compute_aminoacid_loss,
+            return_codon=config.compute_codon_loss,
+        )
+    else:
     # Construct the train and validation datasets
-    train_dataset = MultiEpochScannerSequenceDataset(
-        config.train_path,
-    )
-    eval_dataset = ScannerSequenceDataset(
-        config.eval_path,
-    )
+        train_dataset = MultiEpochScannerSequenceDataset(
+            config.train_path,
+            return_aminoacid=config.compute_aminoacid_loss,
+            return_codon=config.compute_codon_loss,
+            
+        )
+        if config.eval_path:
+            eval_dataset = ScannerSequenceDataset(
+            config.eval_path,
+            )
+        else:
+            eval_dataset = None
     data_collator = GenSLMColatorForLanguageModeling(
         return_codon=config.compute_codon_loss,
         return_aminoacid=config.compute_aminoacid_loss,

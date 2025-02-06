@@ -92,7 +92,7 @@ class ContrastiveLoss(nn.Module):
         batch_size = z.shape[0]
         z_all = [torch.empty_like(z) for _ in range(size)]
         # gather all the tensors 
-        torch.distributed.allgather(z_all, z)
+        torch.distributed.all_gather(z_all, z)
         # replace local rank information so gradients propagate
         z_all[rank] = z
         # concatenate all the tensors on batch dimension
@@ -265,6 +265,8 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
                 json.dump(self.get_config(), f)
             # write model with safetensors
             torch.save(self.state_dict(), os.path.join(save_directory, "model.pt"))
+            # write compatible for huggingface; annoyed
+            torch.save(self.state_dict(), os.path.join(save_directory, "pytorch_model.bin"))
             # override save_pretrained to make sure we save the tokenizer also
             self.transformer.tokenizer.save_pretrained(save_directory)
 
@@ -280,6 +282,9 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
         model = EsmCForContrastiveMaskedLM(config)
         model.update_model_weights(model.transformer.tokenizer)
         # load via safetensors
+        load_path = os.path.join(model_name_or_path, "model.pt")
+        if not os.path.exists(load_path):
+            load_path = os.path.join(model_name_or_path, "pytorch_model.bin")
         state_dict = torch.load(os.path.join(model_name_or_path, "model.pt"))
         model.load_state_dict(state_dict)
         # Load the tokenizer
