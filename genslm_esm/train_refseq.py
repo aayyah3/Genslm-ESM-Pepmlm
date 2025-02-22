@@ -1,4 +1,5 @@
 from __future__ import annotations
+from mpi4py import MPI
 
 import os
 import torch
