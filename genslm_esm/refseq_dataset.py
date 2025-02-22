@@ -4,7 +4,7 @@ import torch
 import glob
 import h5py
 from torch.utils.data import DataLoader, Dataset, IterableDataset
-from genslm.masking_scheduler import MaskingScheduler
+from genslm_esm.masking_scheduler import MaskingScheduler
 import numpy as np
 # In-memory dataset
 class InMemorySequenceDataset(Dataset):
