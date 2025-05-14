@@ -36,15 +36,15 @@ size = comm.Get_size()
 
 # TODO: Only used for a type hint
 @dataclass
-class ContrastiveEsmConfig(PretrainedConfig):
+class ContrastiveEsmCConfig(PretrainedConfig):
     """Add contrastive loss parameters to the ESM config."""
     # ensure any string is utf-8
     def __init__(self, 
                     model_name: str  = "esmc_300m",
                     base_model_path: str = None,
-                    d_model: int = 960,
-                    n_heads: int = 15,
-                    n_layers: int = 30,
+                    d_model: int = 960 ,
+                    n_heads: int = 15 ,
+                    n_layers: int = 30 ,
                     tokenizer_name_or_path: str = None,
                     compute_aminoacid_loss: bool = True,
                     compute_codon_loss: bool = False,
@@ -53,12 +53,11 @@ class ContrastiveEsmConfig(PretrainedConfig):
                     contrastive_pooler: str = "mean",
                     **kwargs):
         super().__init__(**kwargs)
-
         self.model_name = model_name
         self.base_model_path = base_model_path
-        self.d_model = d_model
-        self.n_heads = n_heads
-        self.n_layers = n_layers
+        self.d_model = d_model if "300M" in model_name else 1152
+        self.n_heads = n_heads if "300M" in model_name else 18
+        self.n_layers = n_layers if "300M" in model_name else 36
         self.tokenizer_name_or_path = tokenizer_name_or_path
         self.compute_aminoacid_loss = compute_aminoacid_loss
         self.compute_codon_loss = compute_codon_loss
@@ -132,7 +131,7 @@ POOLER_DISPATCH = {"mean": MeanPooler, "first": FirstPooler}
 
 
 class EsmContrastiveProjectionHead(nn.Module):
-    def __init__(self, config: ContrastiveEsmConfig) -> None:
+    def __init__(self, config: ContrastiveEsmCConfig) -> None:
         super().__init__()
         # The projection representions z are trained to become invariant to
         # many gene/protein specific features
@@ -182,10 +181,14 @@ class EsmContrastiveProjectionHead(nn.Module):
 class EsmCForContrastiveMaskedLM(PreTrainedModel):
     def __init__(
         self,
-        config: ContrastiveEsmConfig,
+        config: ContrastiveEsmCConfig,
+        # TODO: Add explicit paths for tokenizer, base model, etc. 
+        # TODO: These should not be stored in the config
     ) -> None:
         super().__init__(config)
         self.set_config(config)
+        if rank == 0:
+            print(config)
         if '300m' in str(config.model_name.lower()):
             model_builder = ESMC_300M_202412
         elif '600m' in str(config.model_name.lower()):
@@ -201,6 +204,7 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
         try:
             self.transformer.tokenizer = EsmTokenizer.from_pretrained(config.tokenizer_name_or_path)
         except:
+            # TODO: Should we though? Maybe raise errors if the wrong tokenizer is about to be used?
             pass
         # Inject contrastive loss parameters into the config
         # Note: The config settings will override the init settings. This
@@ -259,6 +263,7 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
         if "is_main_process" in kwargs:
             is_main_process = kwargs.pop("is_main_process")
         if is_main_process:
+            # TODO: Clip off file paths and such; everything should be contained in the save directory
             if not os.path.exists(save_directory):
                 os.makedirs(save_directory, exist_ok=True)
             with open(os.path.join(save_directory, "config.json"), "w") as f:
@@ -276,10 +281,13 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
         config_file = os.path.join(model_name_or_path, "config.json")
         with open(config_file, "r") as f:
              config_dict = json.load(f)
-        config = ContrastiveEsmConfig(**config_dict)
+        config = ContrastiveEsmCConfig(**config_dict)
 
         # yes... initiating this way isnt the best--but these models arent that large. Who cares (for now) TODO: fix this
+        # TODO: Finda a way to initialize the model as empty so we 
+        # TODO: dont have to carry around a pretrained ESMC model
         model = EsmCForContrastiveMaskedLM(config)
+        # TODO: this should use the tokenizer in the pretrained model directory which is being loaded
         model.update_model_weights(model.transformer.tokenizer)
         # load via safetensors
         load_path = os.path.join(model_name_or_path, "model.pt")
@@ -288,16 +296,17 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
         state_dict = torch.load(os.path.join(model_name_or_path, "model.pt"))
         model.load_state_dict(state_dict)
         # Load the tokenizer
+        # TODO: this should already be loaded in the model
         model.transformer.tokenizer = EsmTokenizer.from_pretrained(model_name_or_path)
         return model
 
-    def set_config(self, config: ContrastiveEsmConfig):
+    def set_config(self, config: ContrastiveEsmCConfig):
         self.config_file = config
     def get_config(self):
         print(self.config_file)
         print(self.config_file.to_dict())
         return self.config_file.to_dict()
-    def add_contrastive_loss_head(self, config: ContrastiveEsmConfig):
+    def add_contrastive_loss_head(self, config: ContrastiveEsmCConfig):
         self.transformer.contrastive_head = EsmContrastiveProjectionHead(config)
 
     def add_codon_lm_head(self, config: EsmConfig):
@@ -637,7 +646,7 @@ if __name__ == '__main__':
     model_name = 'ESMC_300M'
     tokenizer_path = "/lus/eagle/projects/CVD-Mol-AI/braceal/src/genslm-esm/tokenizer_esm_genslm"
 
-    config = ContrastiveEsmConfig(model_name=model_name,
+    config = ContrastiveEsmCConfig(model_name=model_name,
                                 base_model_path=model_path,
                                 tokenizer_name_or_path=tokenizer_path, 
                                 compute_contrastive_loss=True, 
