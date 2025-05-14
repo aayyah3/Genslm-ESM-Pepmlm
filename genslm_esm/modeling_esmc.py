@@ -193,6 +193,7 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
             model_builder = ESMC_300M_202412
         elif '600m' in str(config.model_name.lower()):
             model_builder = ESMC_600M_202412
+            config.d_model = 1152 # not set correctly in the 600m case
         else:
             raise ValueError("Model name must contain '300m' or '600m' referring to the ESMC model size")        
         register_local_model(config.base_model_path, model_builder)
@@ -230,7 +231,9 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
         # Only used if compute_codon_loss is True. Make a new config with the
         # same parameters as the original config but with a different vocab size
         # (the number of codons 64 + special tokens)
+
         codon_config = EsmConfig(**config.to_dict())
+        print(f"{config.to_dict()=}")
         codon_config.vocab_size = 69
         self.add_codon_lm_head(codon_config)
 
@@ -427,6 +430,12 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
         # amino acid in the original lm head. Here the enumeration is taken over
         # the 69 codon/special tokens. The first 5 tokens are the special tokens
         # which are set to the first 5 dimensions of the codon_decoder/bias.
+        # print(f"codon_decoder shape: {codon_decoder.shape}")
+        # print(f"aminoacid_decoder shape: {aminoacid_decoder.shape}")
+        # print(f"codon_bias shape: {codon_bias.shape}")
+        # print(f"aminoacid_bias shape: {aminoacid_bias.shape}")
+        print(aminoacid_decoder)
+        print(codon_decoder)
         for codon_idx, codon in enumerate(tokenizer.added_tokens_decoder.values()):
             aminoacid = translation_table.get(str(codon), "")
             # The codon could be a special token (<cls>, <pad>, <eos>, <unk>, <mask>)
