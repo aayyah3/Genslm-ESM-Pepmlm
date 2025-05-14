@@ -28,9 +28,12 @@ from genslm_esm.refseq_dataset import (
 )
 from genslm_esm.modeling_esmc import (
                     EsmCForContrastiveMaskedLM, 
-                    ContrastiveEsmConfig
+                    ContrastiveEsmCConfig
 )
-
+from genslm_esm.modeling_esm_v3 import (
+        EsmForContrastiveMaskedLM,
+        ContrastiveEsmConfig,
+)
 @dataclass
 class TrainingArguments(transformers.TrainingArguments):
     """TrainingArguments for configuring the Hugging Face Trainer.
@@ -239,23 +242,47 @@ def main():
 
     # If we receive a hugging face json file instead of a model
     # name, load the config from that
-    model_config = ContrastiveEsmConfig(
-        model_name = config.model_name,
-        base_model_path = config.base_model_path,
-        tokenizer_name_or_path = config.tokenizer_path,
-        compute_codon_loss = config.compute_codon_loss,
-        compute_aminoacid_loss = config.compute_aminoacid_loss,
-        compute_contrastive_loss = config.compute_contrastive_loss,
-        contrastive_temperature = config.contrastive_temperature,
-        contrastive_pooler = config.contrastive_pooler,
-    )
-    model = EsmCForContrastiveMaskedLM(model_config)
-    # for param in model.parameters():
-    #     param.to(torch.bfloat16)
-    # If the number of tokens in the tokenizer is different from the number of tokens
-    # in the model resize the input embedding layer and the MLM prediction head
-    model.update_model_weights(tokenizer)
 
+    def ensure_uniform_dtype(model, dtype=torch.bfloat16):
+        # First verify there's a mix of dtypes
+        dtypes = set()
+        for name, param in model.named_parameters():
+            dtypes.add(param.dtype)
+        
+        print(f"Model has parameters with dtypes: {dtypes}")
+        
+        # Convert all parameters to the same dtype
+        if len(dtypes) > 1:
+            print(f"Converting all parameters to {dtype}")
+            model = model.to(dtype)
+        
+        return model
+    if config.model_name.lower() == 'esmc_300m' or config.model_name.lower() == 'esmc_600m':
+        model_config = ContrastiveEsmCConfig(
+            model_name = config.model_name,
+            base_model_path = config.base_model_path,
+            tokenizer_name_or_path = config.tokenizer_path,
+            compute_codon_loss = config.compute_codon_loss,
+            compute_aminoacid_loss = config.compute_aminoacid_loss,
+            compute_contrastive_loss = config.compute_contrastive_loss,
+            contrastive_temperature = config.contrastive_temperature,
+            contrastive_pooler = config.contrastive_pooler,
+        )
+        model = EsmCForContrastiveMaskedLM(model_config)
+        # If the number of tokens in the tokenizer is different from the number of tokens
+        # in the model resize the input embedding layer and the MLM prediction head
+    elif config.model_name.lower() == 'esm-650m':
+        model = EsmForContrastiveMaskedLM.from_pretrained(
+            config.base_model_path,
+            torch_dtype=torch.bfloat16,
+            compute_codon_loss = config.compute_codon_loss,
+            compute_aminoacid_loss = config.compute_aminoacid_loss,
+            compute_contrastive_loss = config.compute_contrastive_loss,
+            contrastive_temperature = config.contrastive_temperature,
+            contrastive_pooler = config.contrastive_pooler,
+        )
+    model.update_model_weights(tokenizer)
+    model = ensure_uniform_dtype(model) # make sure we didnt put in mismatched weight types on accident
     if 'h5' in config.train_path:
         print('Using HDF5 dataset')
         train_dataset = HDF5SequenceDataset(
