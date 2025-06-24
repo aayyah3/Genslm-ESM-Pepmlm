@@ -271,7 +271,7 @@ def main():
         model = EsmCForContrastiveMaskedLM(model_config)
         # If the number of tokens in the tokenizer is different from the number of tokens
         # in the model resize the input embedding layer and the MLM prediction head
-    elif config.model_name.lower() == 'esm-650m':
+    elif config.model_name.lower() == 'esm-650m' or config.model_name.lower() == 'esm-15b':
         model = EsmForContrastiveMaskedLM.from_pretrained(
             config.base_model_path,
             torch_dtype=torch.bfloat16,
