@@ -514,6 +514,8 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        decode_aminoacid_head: bool = False,
+        decode_codon_head: bool = False,
     ) -> Union[Tuple, MaskedLMOutput]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
@@ -522,6 +524,10 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
             loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`
         kwargs (`Dict[str, any]`, optional, defaults to *{}*):
             Used to hide legacy arguments that have been deprecated.
+        decode_aminoacid_head (`bool`, optional, defaults to False):
+            Whether to use the amino acid head for prediction, regardless of config settings.
+        decode_codon_head (`bool`, optional, defaults to False):
+            Whether to use the codon head for prediction, regardless of config settings.
         """
         return_dict = (
             return_dict if return_dict is not None else self.config.use_return_dict
@@ -568,7 +574,11 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
         sequence_output = outputs.hidden_states[-1]  # (batch_size, seq_length, hidden_size)
 
         # Compute the logits / prediction scores for each head
-        if self.config.compute_aminoacid_loss and self.config.compute_codon_loss:
+        # Override config settings if explicit head flags are provided
+        compute_aminoacid = decode_aminoacid_head or (self.config.compute_aminoacid_loss and not decode_codon_head)
+        compute_codon = decode_codon_head or (self.config.compute_codon_loss and not decode_aminoacid_head)
+        
+        if compute_aminoacid and compute_codon:
             # Split the sequence output into codon and amino acid embeddings
             # These have shape (batch_size // 2, seq_length, hidden_size)
             half_batch_size = sequence_output.shape[0] // 2
@@ -580,13 +590,13 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
             # Instead, we return the aminoacid scores (during inference, set either
             # compute_aminoacid_loss or compute_codon_loss to False)
             prediction_scores = amino_prediction_scores
-        elif self.config.compute_aminoacid_loss:
+        elif compute_aminoacid:
             prediction_scores = self.lm_head(sequence_output)
-        elif self.config.compute_codon_loss:
+        elif compute_codon:
             prediction_scores = self.transformer.codon_lm_head(sequence_output)
         else:
             raise ValueError(
-                "Either compute_aminoacid_loss or compute_codon_loss must be True"
+                "Either compute_aminoacid_loss or compute_codon_loss must be True, or use_aminoacid_head or use_codon_head must be True"
             )
 
         masked_lm_loss = None
