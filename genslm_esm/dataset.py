@@ -89,12 +89,19 @@ translation_table = {
     "TGA": "",
 }
 
+# The valid codons are the keys of the translation table
+valid_codons = set(translation_table.keys())
+
 
 def group_codons(seq: str) -> str:
-    return " ".join(seq[i : i + 3] for i in range(0, len(seq), 3)).upper()
+    """Group codons into three-mers and replace invalid codons with '<unk>'."""
+    seq = seq.upper()
+    three_mers = (seq[i : i + 3] for i in range(0, len(seq), 3))
+    return " ".join(x if x in valid_codons else "<unk>" for x in three_mers)
 
 
 def codon_seq_to_amino_acid(codon_seq: str) -> str:
+    """Translate codons to amino acids and replace invalid codons with '<unk>'."""
     return " ".join(
         translation_table.get(codon, "<unk>") for codon in codon_seq.split()
     )
@@ -175,7 +182,7 @@ class FastaDataset(Dataset):
     def __init__(
         self,
         file_path: PathLike | None = None,
-        sequences: List[Sequence] | None = None,
+        sequences: List[str] | None = None,
         return_codon: bool = True,
         return_aminoacid: bool = False,
     ) -> None:
@@ -187,14 +194,13 @@ class FastaDataset(Dataset):
 
         # Read the fasta file
         if sequences is None:
+            assert file_path is not None
             dna_sequenes = self.read_fasta_only_seq(file_path)
         else:
             dna_sequenes = sequences
+
         # Preprocess the sequences into codons
-        # TODO: We could also use an <unk> token (this would be better)
-        self.sequences = [
-            group_codons(seq) for seq in dna_sequenes
-        ]
+        self.sequences = [group_codons(seq) for seq in dna_sequenes]
 
     def read_fasta_only_seq(self, fasta_file: PathLike) -> List[str]:
         """Reads fasta file sequences without description tag."""
@@ -232,11 +238,14 @@ class FastaDataset(Dataset):
 class FastaAminoAcidDataset(FastaDataset):
     """Assumes the fasta file contains amino acid sequences."""
 
-    def __init__(self, file_path: PathLike | None = None, sequences: List[Sequence] | None = None) -> None:
+    def __init__(
+        self, file_path: PathLike | None = None, sequences: List[str] | None = None
+    ) -> None:
         if file_path is None and sequences is None:
             raise ValueError("Either file_path or sequences must be provided.")
 
         if sequences is None:
+            assert file_path is not None
             self.sequences = self.read_fasta_only_seq(file_path)
         else:
             self.sequences = sequences
@@ -552,7 +561,7 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
             sequences,
             return_tensors="pt",
             truncation=True,
-            padding='max_length',
+            padding="max_length",
             max_length=self.max_length,
             return_special_tokens_mask=self.train_mode and self.mlm,
         )
