@@ -1,5 +1,9 @@
 from __future__ import annotations
-from mpi4py import MPI
+
+# Need to import MPI before torch on Polaris
+# Requires commenting out to run pytests on MacOS.
+from mpi4py import MPI  # noqa: F401
+
 import json
 import random
 import re
@@ -18,9 +22,7 @@ from torch.utils.data import Dataset
 from transformers import BatchEncoding, DataCollatorForLanguageModeling
 
 PathLike = Union[str, Path]
-comm = MPI.COMM_WORLD
-rank = comm.Get_rank()
-size = comm.Get_size()
+
 # Stop codons map to empty strings ""
 translation_table = {
     "TTT": "F",
