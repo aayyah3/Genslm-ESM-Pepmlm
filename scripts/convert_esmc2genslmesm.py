@@ -39,7 +39,7 @@ def convert_model(model_name_or_path: str, output_dir: str):
     config = ContrastiveEsmConfig(model_name=model_path, compute_contrastive_loss=True)
     model = ESMC.from_pretrained(model_path)
 
-    tokenizer_path = /lus/eagle/projects/CVD-Mol-AI/braceal/src/genslm-esm/tokenizer_esm_genslm
+    tokenizer_path = "/lus/eagle/projects/CVD-Mol-AI/braceal/src/genslm-esm/tokenizer_esm_genslm"
     tokenizer = EsmTokenizer.from_pretrained(tokenizer_path)
 
     model.tokenizer = tokenizer
