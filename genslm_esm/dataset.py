@@ -596,8 +596,6 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
         return batch
 
     def torch_call(self, examples: List[Dict[str, str]]) -> BatchEncoding:
-        # if rank == 0:
-        #     print(f"{examples=}")
         if self.return_codon:
             # Set the low parameter to 33 to sample random noise from the
             # codon vocabulary and not the amino acid vocabulary
@@ -626,10 +624,6 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
             # labels, and attention_mask to account for the stop codon
             batch_size, seq_len = codon_batch["input_ids"].shape
             pad_size = seq_len - amino_batch["input_ids"].shape[1]
-            # if rank == 0:
-            #     print(f"pad_size: {pad_size}")
-            #     print(f"amino_batch['input_ids'].shape: {amino_batch['input_ids'].shape}")
-            #     print(f"codon_batch['input_ids'].shape: {codon_batch['input_ids'].shape}")
             pad = torch.ones((batch_size, pad_size), dtype=torch.long)
             amino_batch["input_ids"] = torch.cat([amino_batch["input_ids"], pad], dim=1)
             amino_batch["labels"] = torch.cat(
