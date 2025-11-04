@@ -1,94 +1,105 @@
-from __future__ import annotations
+"""Dataset utilities for working with biological sequences."""
 
-# Need to import MPI before torch on Polaris
-# Requires commenting out to run pytests on MacOS.
-from mpi4py import MPI  # noqa: F401
+from __future__ import annotations
 
 import json
 import random
 import re
 import shutil
-import numpy as np
+from abc import ABC
+from abc import abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from tqdm import tqdm
-from typing import Dict, List, Union, Any, Optional, Tuple
-import torch
+from typing import Any
+from typing import Union
+
 import h5py
-from abc import ABC, abstractmethod
+import numpy as np
+import torch
+
+# Need to import MPI before torch on Polaris
+# Requires commenting out to run pytests on MacOS.
+try:
+    from mpi4py import MPI
+except ImportError:
+    print('MPI not found, will not be able to use MPI-enabled datasets.')
+    MPI = None
+
 from torch.utils.data import Dataset
-from transformers import BatchEncoding, DataCollatorForLanguageModeling
+from tqdm import tqdm
+from transformers import BatchEncoding
+from transformers import DataCollatorForLanguageModeling
 
 PathLike = Union[str, Path]
 
 # Stop codons map to empty strings ""
 translation_table = {
-    "TTT": "F",
-    "TTC": "F",
-    "TTA": "L",
-    "TTG": "L",
-    "TCT": "S",
-    "TCC": "S",
-    "TCA": "S",
-    "TCG": "S",
-    "TAT": "Y",
-    "TAC": "Y",
-    "TGT": "C",
-    "TGC": "C",
-    "TGG": "W",
-    "CTT": "L",
-    "CTC": "L",
-    "CTA": "L",
-    "CTG": "L",
-    "CCT": "P",
-    "CCC": "P",
-    "CCA": "P",
-    "CCG": "P",
-    "CAT": "H",
-    "CAC": "H",
-    "CAA": "Q",
-    "CAG": "Q",
-    "CGT": "R",
-    "CGC": "R",
-    "CGA": "R",
-    "CGG": "R",
-    "ATT": "I",
-    "ATC": "I",
-    "ATA": "I",
-    "ATG": "M",
-    "ACT": "T",
-    "ACC": "T",
-    "ACA": "T",
-    "ACG": "T",
-    "AAT": "N",
-    "AAC": "N",
-    "AAA": "K",
-    "AAG": "K",
-    "AGT": "S",
-    "AGC": "S",
-    "AGA": "R",
-    "AGG": "R",
-    "GTT": "V",
-    "GTC": "V",
-    "GTA": "V",
-    "GTG": "V",
-    "GCT": "A",
-    "GCC": "A",
-    "GCA": "A",
-    "GCG": "A",
-    "GAT": "D",
-    "GAC": "D",
-    "GAA": "E",
-    "GAG": "E",
-    "GGT": "G",
-    "GGC": "G",
-    "GGA": "G",
-    "GGG": "G",
-    "TAG": "",
-    "TAA": "",
-    "TGA": "",
+    'TTT': 'F',
+    'TTC': 'F',
+    'TTA': 'L',
+    'TTG': 'L',
+    'TCT': 'S',
+    'TCC': 'S',
+    'TCA': 'S',
+    'TCG': 'S',
+    'TAT': 'Y',
+    'TAC': 'Y',
+    'TGT': 'C',
+    'TGC': 'C',
+    'TGG': 'W',
+    'CTT': 'L',
+    'CTC': 'L',
+    'CTA': 'L',
+    'CTG': 'L',
+    'CCT': 'P',
+    'CCC': 'P',
+    'CCA': 'P',
+    'CCG': 'P',
+    'CAT': 'H',
+    'CAC': 'H',
+    'CAA': 'Q',
+    'CAG': 'Q',
+    'CGT': 'R',
+    'CGC': 'R',
+    'CGA': 'R',
+    'CGG': 'R',
+    'ATT': 'I',
+    'ATC': 'I',
+    'ATA': 'I',
+    'ATG': 'M',
+    'ACT': 'T',
+    'ACC': 'T',
+    'ACA': 'T',
+    'ACG': 'T',
+    'AAT': 'N',
+    'AAC': 'N',
+    'AAA': 'K',
+    'AAG': 'K',
+    'AGT': 'S',
+    'AGC': 'S',
+    'AGA': 'R',
+    'AGG': 'R',
+    'GTT': 'V',
+    'GTC': 'V',
+    'GTA': 'V',
+    'GTG': 'V',
+    'GCT': 'A',
+    'GCC': 'A',
+    'GCA': 'A',
+    'GCG': 'A',
+    'GAT': 'D',
+    'GAC': 'D',
+    'GAA': 'E',
+    'GAG': 'E',
+    'GGT': 'G',
+    'GGC': 'G',
+    'GGA': 'G',
+    'GGG': 'G',
+    'TAG': '',
+    'TAA': '',
+    'TGA': '',
 }
 
 # The valid codons are the keys of the translation table
@@ -99,54 +110,68 @@ def group_codons(seq: str) -> str:
     """Group codons into three-mers and replace invalid codons with '<unk>'."""
     seq = seq.upper()
     three_mers = (seq[i : i + 3] for i in range(0, len(seq), 3))
-    return " ".join(x if x in valid_codons else "<unk>" for x in three_mers)
+    return ' '.join(x if x in valid_codons else '<unk>' for x in three_mers)
 
 
 def codon_seq_to_amino_acid(codon_seq: str) -> str:
-    """Translate codons to amino acids and replace invalid codons with '<unk>'."""
-    return " ".join(
-        translation_table.get(codon, "<unk>") for codon in codon_seq.split()
+    """Translate codons to amino acids.
+
+    Replace invalid codons with '<unk>'.
+    """
+    return ' '.join(
+        translation_table.get(codon, '<unk>') for codon in codon_seq.split()
     )
 
 
 @dataclass
 class Sequence:
+    """A biological sequence and its description tag."""
+
     sequence: str
     """Biological sequence (Nucleotide sequence)."""
     tag: str
     """Sequence description tag."""
 
-    def translate(self) -> "Sequence":
+    def translate(self) -> Sequence:
+        """Translate the sequence to amino acids."""
         amino_acid_seq = codon_seq_to_amino_acid(group_codons(self.sequence))
-        return Sequence(sequence=amino_acid_seq.replace(" ", ""), tag=self.tag)
+        return Sequence(sequence=amino_acid_seq.replace(' ', ''), tag=self.tag)
 
 
-def read_fasta(fasta_file: PathLike) -> List[Sequence]:
-    """Reads fasta file sequences and description tags into dataclass."""
+def read_fasta(fasta_file: PathLike) -> list[Sequence]:
+    """Read a fasta file sequences and description tags."""
     text = Path(fasta_file).read_text()
-    pattern = re.compile("^>", re.MULTILINE)
+    pattern = re.compile('^>', re.MULTILINE)
     non_parsed_seqs = re.split(pattern, text)[1:]
     lines = [
-        line.replace("\n", "") for seq in non_parsed_seqs for line in seq.split("\n", 1)
+        line.replace('\n', '')
+        for seq in non_parsed_seqs
+        for line in seq.split('\n', 1)
     ]
 
     return [
-        Sequence(sequence=seq, tag=tag) for seq, tag in zip(lines[1::2], lines[::2])
+        Sequence(sequence=seq, tag=tag)
+        for seq, tag in zip(lines[1::2], lines[::2])
     ]
 
 
 def write_fasta(
-    sequences: Union[Sequence, List[Sequence]], fasta_file: PathLike, mode: str = "w"
+    sequences: Sequence | list[Sequence],
+    fasta_file: PathLike,
+    mode: str = 'w',
 ) -> None:
     """Write or append sequences to a fasta file."""
     seqs = [sequences] if isinstance(sequences, Sequence) else sequences
     with open(fasta_file, mode) as f:
         for seq in seqs:
-            f.write(f">{seq.tag}\n{seq.sequence}\n")
+            f.write(f'>{seq.tag}\n{seq.sequence}\n')
 
 
 def random_split_fasta(
-    input_fasta: PathLike, output_dir: PathLike, split: float = 0.8, seed: int = 0
+    input_fasta: PathLike,
+    output_dir: PathLike,
+    split: float = 0.8,
+    seed: int = 0,
 ) -> None:
     """Randomly split a fasta file into train and validation fasta file."""
     # Read the input file
@@ -162,29 +187,31 @@ def random_split_fasta(
 
     # Write the train and validation fasta files
     split_idx = int(len(sequences) * split)
-    write_fasta(sequences[:split_idx], output_dir / "train.fasta")
-    write_fasta(sequences[split_idx:], output_dir / "valid.fasta")
+    write_fasta(sequences[:split_idx], output_dir / 'train.fasta')
+    write_fasta(sequences[split_idx:], output_dir / 'valid.fasta')
 
     # Copy the original fasta file to the output directory for reference
     shutil.copy(input_fasta, output_dir)
 
     # Log JSON metadata on the split
     metadata = {
-        "input_fasta": str(Path(input_fasta).resolve()),
-        "output_dir": str(output_dir.resolve()),
-        "split": split,
-        "seed": seed,
-        "datetime": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        'input_fasta': str(Path(input_fasta).resolve()),
+        'output_dir': str(output_dir.resolve()),
+        'split': split,
+        'seed': seed,
+        'datetime': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
     }
-    with open(output_dir / "metadata.json", "w") as f:
+    with open(output_dir / 'metadata.json', 'w') as f:
         json.dump(metadata, f, indent=2)
 
 
 class FastaDataset(Dataset):
+    """A dataset of biological sequences from a fasta file."""
+
     def __init__(
         self,
         file_path: PathLike | None = None,
-        sequences: List[str] | None = None,
+        sequences: list[str] | None = None,
         return_codon: bool = True,
         return_aminoacid: bool = False,
     ) -> None:
@@ -192,7 +219,7 @@ class FastaDataset(Dataset):
         self.return_aminoacid = return_aminoacid
 
         if file_path is None and sequences is None:
-            raise ValueError("Either file_path or sequences must be provided.")
+            raise ValueError('Either file_path or sequences must be provided.')
 
         # Read the fasta file
         if sequences is None:
@@ -204,22 +231,24 @@ class FastaDataset(Dataset):
         # Preprocess the sequences into codons
         self.sequences = [group_codons(seq) for seq in dna_sequenes]
 
-    def read_fasta_only_seq(self, fasta_file: PathLike) -> List[str]:
-        """Reads fasta file sequences without description tag."""
+    def read_fasta_only_seq(self, fasta_file: PathLike) -> list[str]:
+        """Read a fasta file sequences without description tag."""
         text = Path(fasta_file).read_text()
-        pattern = re.compile("^>", re.MULTILINE)
+        pattern = re.compile('^>', re.MULTILINE)
         non_parsed_seqs = re.split(pattern, text)[1:]
         lines = [
-            line.replace("\n", "")
+            line.replace('\n', '')
             for seq in non_parsed_seqs
-            for line in seq.split("\n", 1)
+            for line in seq.split('\n', 1)
         ]
         return lines[1::2]
 
     def __len__(self) -> int:
+        """Return the number of sequences in the dataset."""
         return len(self.sequences)
 
-    def __getitem__(self, idx: int) -> Dict[str, str]:
+    def __getitem__(self, idx: int) -> dict[str, str]:
+        """Get the idx'th sequence from the dataset."""
         # Get the idx'th codon sequence
         codon_sequence = self.sequences[idx]
 
@@ -228,11 +257,11 @@ class FastaDataset(Dataset):
 
         # Return the codon sequence
         if self.return_codon:
-            data["codon"] = codon_sequence
+            data['codon'] = codon_sequence
 
         # Return the amino acid sequence
         if self.return_aminoacid:
-            data["aminoacid"] = codon_seq_to_amino_acid(codon_sequence)
+            data['aminoacid'] = codon_seq_to_amino_acid(codon_sequence)
 
         return data
 
@@ -241,10 +270,12 @@ class FastaAminoAcidDataset(FastaDataset):
     """Assumes the fasta file contains amino acid sequences."""
 
     def __init__(
-        self, file_path: PathLike | None = None, sequences: List[str] | None = None
+        self,
+        file_path: PathLike | None = None,
+        sequences: list[str] | None = None,
     ) -> None:
         if file_path is None and sequences is None:
-            raise ValueError("Either file_path or sequences must be provided.")
+            raise ValueError('Either file_path or sequences must be provided.')
 
         if sequences is None:
             assert file_path is not None
@@ -252,47 +283,61 @@ class FastaAminoAcidDataset(FastaDataset):
         else:
             self.sequences = sequences
 
-    def __getitem__(self, idx: int) -> Dict[str, str]:
-        return {"aminoacid": self.sequences[idx]}
+    def __getitem__(self, idx: int) -> dict[str, str]:
+        """Get the idx'th sequence from the dataset."""
+        return {'aminoacid': self.sequences[idx]}
 
 
 class CurriculumHDF5DatasetBuilder:
-    """Encapsulate logic for building a sequence homology curriculum dataset."""
+    """Build a sequence homology curriculum dataset."""
 
     def make_clusters_mmseqs(self) -> None:
-        info_string = "mmseqs easy-cluster [input_fasta_file] [output_prefix] [temp_folder] --min-seq-id 0.5 --alignment-mode 3 --max-seqs 200 -s 7 -c 0.8 --cov-mode 0"
+        """Make clusters using mmseqs."""
+        info_string = (
+            'mmseqs easy-cluster [input_fasta_file] [output_prefix] '
+            '[temp_folder] --min-seq-id 0.5 --alignment-mode 3 --max-seqs 200 '
+            '-s 7 -c 0.8 --cov-mode 0'
+        )
         print(
-            f"Run command:\n`{info_string}`\nTo generate the cluster files, see mmseqs2 documentation for more info"
+            f'Run command:\n`{info_string}`\nTo generate the cluster files, '
+            'see mmseqs2 documentation for more info',
         )
 
-    def _read_cluster_file(self, fp: Path) -> Dict[str, List[str]]:
-        """
-        Reads a *_cluster.tsv file from mmseqs and reads it into a dictionary of {rep_seq: [member_seq, member_seq,...,member_seq]}
+    def _read_cluster_file(self, fp: Path) -> dict[str, list[str]]:
+        """Read a cluster file from mmseqs.
+
+        Reads a *_cluster.tsv file from mmseqs and reads it into a dictionary
+        of {rep_seq: [member_seq, member_seq,...,member_seq]}
         """
         clusters = defaultdict(list)
 
-        with open(fp, "r") as f:
+        with open(fp) as f:
             text = f.readlines()
             for line in text:
                 if len(line) == 0:
                     continue
-                rep, member = line.strip().split("\t")
+                rep, member = line.strip().split('\t')
                 clusters[rep].append(member)
 
         return clusters
 
     def make_id_to_index(
-        self, curriculum_h5_fp: Path, cluster_file: Path, outfile: Path
+        self,
+        curriculum_h5_fp: Path,
+        cluster_file: Path,
+        outfile: Path,
     ) -> None:
-        # Read in the output *_cluster.tsv from mmseqs `cluster_rep\tcluster_member\n`, takes ~2min
+        """Make id to index mapping from a curriculum h5 and cluster file."""
+        # Read in the output *_cluster.tsv from mmseqs
+        # `cluster_rep\tcluster_member\n`, takes ~2min
         clusters = self._read_cluster_file(cluster_file)
         # Load the h5 file for the seq md5's
-        curriculum = h5py.File(curriculum_h5_fp, "r")
+        curriculum = h5py.File(curriculum_h5_fp, 'r')
 
         # Takes a very long time (~2 hr)
-        ids = curriculum["id"]
+        ids = curriculum['id']
         id_to_index = {
-            seq_id.decode("utf-8"): idx
+            seq_id.decode('utf-8'): idx
             for idx, seq_id in tqdm(enumerate(ids), total=len(ids))
         }
 
@@ -330,12 +375,13 @@ class StandardSampler(HDF5SequenceSampler):
         train_ratio: float = 0.9,
         seed: int = 42,
     ) -> None:
-        """The StandardSampler samples sequences from a dataset uniformly at random.
+        """Sample sequences from a dataset uniformly at random.
 
         Parameters
         ----------
         file_path : PathLike
-            The path to the HDF5 file containing the sequences (contains the key: 'sequence').
+            The path to the HDF5 file containing the sequences
+            (contains the key: 'sequence').
         train_ratio : float, optional
             The proportion of data to use for training, by default 0.9
         seed : int, optional
@@ -348,11 +394,11 @@ class StandardSampler(HDF5SequenceSampler):
         """
         # Check that the split ratios are valid
         if not (0 < train_ratio < 1):
-            raise ValueError("Invalid split ratios, must sum to 1.0")
+            raise ValueError('Invalid split ratios, must sum to 1.0')
 
         # Peek into the HDF5 file to determine the number of sequences
-        with h5py.File(file_path, "r") as f:
-            self.len = f["sequence"].shape[0]
+        with h5py.File(file_path, 'r') as f:
+            self.len = f['sequence'].shape[0]
 
         # Set the random seed for reproducibility
         np.random.seed(seed)
@@ -365,16 +411,17 @@ class StandardSampler(HDF5SequenceSampler):
 
     def num_sequences(self, split: str) -> int:
         """Return the number of sequences in the split."""
-        return len(self.train_inds if split == "train" else self.eval_inds)
+        return len(self.train_inds if split == 'train' else self.eval_inds)
 
     def sample(self, idx: int, split: str) -> int:
         """Sample a random sequence index."""
-        inds = self.train_inds if split == "train" else self.eval_inds
+        inds = self.train_inds if split == 'train' else self.eval_inds
         return inds[idx]
 
 
 class SequenceHomologySampler(HDF5SequenceSampler):
-    """
+    """Sample sequences from a dataset with sequence homology.
+
     This dataset requires mmseqs easycluster files to be made.
 
     For a sequence identity threshold of 0.5, this command was used:
@@ -396,7 +443,9 @@ class SequenceHomologySampler(HDF5SequenceSampler):
         seed: int = 42,
         num_eval_samples: int | None = None,
     ) -> None:
-        """The SequenceHomologySampler samples sequences from a dataset such that
+        """Sample sequences from a dataset with sequence homology.
+
+        Samples sequences from a dataset such that
         each cluster is represented in both the training and evaluation sets.
 
         Parameters
@@ -408,9 +457,10 @@ class SequenceHomologySampler(HDF5SequenceSampler):
         seed : int, optional
             The random seed to reproduce the split, by default 42
         num_eval_samples : int, optional
-            The number of evaluation samples to use each epoch. Since the evaluation
-            set can be very large, if this option is not None, then we cycle through
-            the evaluation set, evaluating `num_eval_samples` per epoch, by default None.
+            The number of evaluation samples to use each epoch. Since
+            the evaluation set can be very large, if this option is not None,
+            then we cycle through the evaluation set, evaluating
+            `num_eval_samples` per epoch, by default None.
 
         Raises
         ------
@@ -419,7 +469,7 @@ class SequenceHomologySampler(HDF5SequenceSampler):
         """
         # Check that the split ratios are valid
         if not (0 < train_ratio < 1):
-            raise ValueError("Invalid split ratios, must sum to 1.0")
+            raise ValueError('Invalid split ratios, must sum to 1.0')
 
         # Load cluster mapping file (generated by CurriculumHDF5DatasetBuilder)
         # Stores a mapping from md5 cluster index to the HDF5
@@ -427,19 +477,20 @@ class SequenceHomologySampler(HDF5SequenceSampler):
         clusters: np.ndarray = np.load(file_path, allow_pickle=True)
 
         # Remove any clusters with only 2 sequences
-        clusters = clusters[[len(cluster) > 2 for cluster in clusters]]
+        clusters = clusters[[len(cluster) > 2 for cluster in clusters]]  # noqa: PLR2004
 
         # Set the random seed for reproducibility
         np.random.seed(seed)
 
-        # Store a random sample of the sequence indices within each cluster for training and eval
-        # This effectively splits md5_idx_to_h5_idx into train and eval sets such that
-        # sequences from each cluster are represented in the both training and evaluation sets
+        # Store a random sample of the sequence indices within each cluster
+        # for training and eval. This effectively splits md5_idx_to_h5_idx
+        # into train and eval sets such that sequences from each cluster are
+        # represented in the both training and evaluation sets
         self.train_inds: dict[int, np.ndarray] = {}
         self.eval_inds: dict[int, np.ndarray] = {}
 
-        # From each cluster, randomly sample train_ratio of the sequences for training
-        # and eval_ratio of the sequences for evaluation
+        # From each cluster, randomly sample train_ratio of the sequences for
+        # training and eval_ratio of the sequences for evaluation
         for cluster_idx, cluster in enumerate(clusters):
             # Generate a random permutation of the cluster indices
             sample_inds = np.random.permutation(len(cluster))
@@ -457,13 +508,13 @@ class SequenceHomologySampler(HDF5SequenceSampler):
     def num_sequences(self, split: str) -> int:
         """Return the number of clusters."""
         # The number of clusters is the same for train and eval
-        if split == "train" or self.num_eval_samples is None:
+        if split == 'train' or self.num_eval_samples is None:
             return len(self.train_inds)
         return self.num_eval_samples
 
     def sample(self, idx: int, split: str) -> int:
         """Sample a random sequence index from the `idx` cluster."""
-        if split == "train":
+        if split == 'train':
             return np.random.choice(self.train_inds[idx])
 
         # Sample from the eval set according to the number of eval samples
@@ -479,20 +530,23 @@ class SequenceHomologySampler(HDF5SequenceSampler):
 
 
 class HDF5Dataset(Dataset):
+    """Load sequences from an HDF5 file according to any sampling strategy."""
+
     def __init__(
         self,
         file_path: PathLike,
         hdf5_sampler: HDF5SequenceSampler,
-        split: str = "train",
+        split: str = 'train',
         return_codon: bool = True,
         return_aminoacid: bool = False,
     ) -> None:
-        """A PyTorch Dataset for loading sequences from an HDF5 file according to any sampling strategy.
+        """Load sequences from an HDF5 file according to any sampling strategy.
 
         Parameters
         ----------
         file_path : Path
-            The path to the HDF5 file containing the sequences (contains the key: 'sequence').
+            The path to the HDF5 file containing the sequences
+            (contains the key: 'sequence').
         hdf5_sampler : HDF5SequenceSampler
             The sampler to use for sampling sequences from the HDF5 file.
         split : str, optional
@@ -511,19 +565,24 @@ class HDF5Dataset(Dataset):
     @property
     def h5_data(self) -> h5py.File:
         """Lazy load the h5 file in the dataloader worker process."""
-        if not hasattr(self, "_h5_data"):
-            self._h5_data = h5py.File(self.file_path, "r")
+        if not hasattr(self, '_h5_data'):
+            self._h5_data = h5py.File(self.file_path, 'r')
         return self._h5_data
 
     def __len__(self) -> int:
+        """Return the number of sequences in the dataset."""
         return self.hdf5_sampler.num_sequences(self.split)
 
-    def __getitem__(self, idx: int) -> Dict[str, str]:
-        # Randomly sample one of the sequences within the `idx` sequence cluster
+    def __getitem__(self, idx: int) -> dict[str, str]:
+        """Get the idx'th sequence from the dataset."""
+        # Randomly sample one of the sequences within the `idx` sequence
+        # cluster
         sample_idx = self.hdf5_sampler.sample(idx, self.split)
 
         # Load the sequence from the HDF5 file
-        dna_sequence: str = self.h5_data["sequence"][sample_idx].decode("utf-8")
+        dna_sequence: str = self.h5_data['sequence'][sample_idx].decode(
+            'utf-8',
+        )
         codon_sequence = group_codons(dna_sequence)
 
         # The output data dictionary to be returned
@@ -531,18 +590,21 @@ class HDF5Dataset(Dataset):
 
         # Return the codon sequence
         if self.return_codon:
-            data["codon"] = codon_sequence
+            data['codon'] = codon_sequence
 
         # Return the amino acid sequence
         if self.return_aminoacid:
-            data["aminoacid"] = codon_seq_to_amino_acid(codon_sequence)
+            data['aminoacid'] = codon_seq_to_amino_acid(codon_sequence)
 
         return data
 
 
 class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
-    """Augment the underlying DataCollatorForLanguageModeling to handle
-    multiple batch encoding inputs."""
+    """Collate sequences for language modeling.
+
+    Augment the underlying DataCollatorForLanguageModeling to handle
+    multiple batch encoding inputs.
+    """
 
     def __init__(
         self,
@@ -550,27 +612,37 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
         return_aminoacid: bool = False,
         train_mode: bool = False,
         max_length: int = 2048,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
+        """Collate sequences for language modeling.
+
+        Augment the underlying DataCollatorForLanguageModeling to handle
+        multiple batch encoding inputs.
+        """
         self.return_codon = return_codon
         self.return_aminoacid = return_aminoacid
         self.train_mode = train_mode
         self.max_length = max_length
         super().__init__(**kwargs)
 
-    def tokenize(self, sequences: List[str]) -> BatchEncoding:
+    def tokenize(self, sequences: list[str]) -> BatchEncoding:
+        """Tokenize a list of sequences."""
         return self.tokenizer(
             sequences,
-            return_tensors="pt",
+            return_tensors='pt',
             truncation=True,
-            padding="max_length",
+            padding='max_length',
             max_length=self.max_length,
             return_special_tokens_mask=self.train_mode and self.mlm,
         )
 
     def torch_call_helper(
-        self, sequences: List[str], low: int = 0, high: Optional[int] = None
+        self,
+        sequences: list[str],
+        low: int = 0,
+        high: int | None = None,
     ) -> BatchEncoding:
+        """Tokenize a list of sequences and mask tokens if we are training."""
         # First, tokenize the batch
         batch = self.tokenize(sequences)
 
@@ -579,58 +651,75 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
             return batch
 
         if self.mlm:
-            # If special token mask has been preprocessed, pop it from the dict.
-            batch["input_ids"], batch["labels"] = self.torch_mask_tokens(
-                batch["input_ids"],
-                special_tokens_mask=batch.pop("special_tokens_mask", None),
+            # If special token mask has been preprocessed, pop it from the
+            # dict.
+            batch['input_ids'], batch['labels'] = self.torch_mask_tokens(
+                batch['input_ids'],
+                special_tokens_mask=batch.pop('special_tokens_mask', None),
                 low=low,
                 high=high,
             )
         else:
             # TODO: This region of the code is not used for our BERT models
             # please test this if you want to use it.
-            labels = batch["input_ids"].clone()
+            labels = batch['input_ids'].clone()
             if self.tokenizer.pad_token_id is not None:
                 labels[labels == self.tokenizer.pad_token_id] = -100
-            batch["labels"] = labels
+            batch['labels'] = labels
         return batch
 
-    def torch_call(self, examples: List[Dict[str, str]]) -> BatchEncoding:
+    def torch_call(self, examples: list[dict[str, str]]) -> BatchEncoding:
+        """Collate a list of sequences for language modeling."""
         if self.return_codon:
             # Set the low parameter to 33 to sample random noise from the
             # codon vocabulary and not the amino acid vocabulary
-            codon_batch = self.torch_call_helper([e["codon"] for e in examples], low=33)
-            # We first need to realign the codon labels onto the output label range [0, 69)
-            # We do this by subtracting 28 from the codon labels since the codon labels start with
-            # the mask token at '<mask>': 32, and we also need to account for the special tokens
-            # '<cls>': 0, '<pad>': 1, '<eos>': 2, '<unk>': 3, which are included in the codon vocabulary
+            codon_batch = self.torch_call_helper(
+                [e['codon'] for e in examples],
+                low=33,
+            )
+            # We first need to realign the codon labels onto the output label
+            # range [0, 69). We do this by subtracting 28 from the codon
+            # labels since the codon labels start with the mask token at
+            # '<mask>': 32, and we also need to account for the special tokens
+            # '<cls>': 0, '<pad>': 1, '<eos>': 2, '<unk>': 3, which are
+            # included in the codon vocabulary.
             # Note: labels are only present during training, not inference.
-            if "labels" in codon_batch:
-                mask = codon_batch["labels"] > 32
-                codon_batch["labels"][mask] -= 28
+            if 'labels' in codon_batch:
+                mask = codon_batch['labels'] > 32  # noqa: PLR2004
+                codon_batch['labels'][mask] -= 28
 
         if self.return_aminoacid:
             # Set the high parameter to 25 to sample random noise from the
             # amino acid vocabulary and not the codon vocabulary (there are a
-            # tokens in the amino acid vocabulary that we want to avoid sampling from)
-            # 'B': 25, 'U': 26, 'Z': 27, 'O': 28, '.': 29, '-': 30, '<null_1>': 31, '<mask>': 32,
-            # Note: we also avoid sampling the special tokens '<cls>': 0, '<pad>': 1, '<eos>': 2, '<unk>': 3,
+            # tokens in the amino acid vocabulary that we want to avoid
+            # sampling from) 'B': 25, 'U': 26, 'Z': 27, 'O': 28, '.': 29,
+            # '-': 30, '<null_1>': 31, '<mask>': 32,
+            # Note: we also avoid sampling the special tokens '<cls>': 0,
+            # '<pad>': 1, '<eos>': 2, '<unk>': 3,
             amino_batch = self.torch_call_helper(
-                [e["aminoacid"] for e in examples], low=4, high=24
+                [e['aminoacid'] for e in examples],
+                low=4,
+                high=24,
             )
 
         if self.return_codon and self.return_aminoacid:
-            # Then we need to add an extra pad token to the amino acid input_ids,
-            # labels, and attention_mask to account for the stop codon
-            batch_size, seq_len = codon_batch["input_ids"].shape
-            pad_size = seq_len - amino_batch["input_ids"].shape[1]
+            # Then we need to add an extra pad token to the amino acid
+            # input_ids, labels, and attention_mask to account for the stop
+            # codon
+            batch_size, seq_len = codon_batch['input_ids'].shape
+            pad_size = seq_len - amino_batch['input_ids'].shape[1]
             pad = torch.ones((batch_size, pad_size), dtype=torch.long)
-            amino_batch["input_ids"] = torch.cat([amino_batch["input_ids"], pad], dim=1)
-            amino_batch["labels"] = torch.cat(
-                [amino_batch["labels"], pad * -100], dim=1
+            amino_batch['input_ids'] = torch.cat(
+                [amino_batch['input_ids'], pad],
+                dim=1,
             )
-            amino_batch["attention_mask"] = torch.cat(
-                [amino_batch["attention_mask"], pad * 0], dim=1
+            amino_batch['labels'] = torch.cat(
+                [amino_batch['labels'], pad * -100],
+                dim=1,
+            )
+            amino_batch['attention_mask'] = torch.cat(
+                [amino_batch['attention_mask'], pad * 0],
+                dim=1,
             )
 
             # We have to put the amino acid and codon sequences into separate
@@ -639,13 +728,13 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
             return BatchEncoding(
                 {
                     # The amino acids are passed through the standard variables
-                    "input_ids": amino_batch["input_ids"],
-                    "attention_mask": amino_batch["attention_mask"],
-                    "labels": amino_batch["labels"],
-                    "codon_input_ids": codon_batch["input_ids"],
-                    "codon_attention_mask": codon_batch["attention_mask"],
-                    "codon_labels": codon_batch["labels"],
-                }
+                    'input_ids': amino_batch['input_ids'],
+                    'attention_mask': amino_batch['attention_mask'],
+                    'labels': amino_batch['labels'],
+                    'codon_input_ids': codon_batch['input_ids'],
+                    'codon_attention_mask': codon_batch['attention_mask'],
+                    'codon_labels': codon_batch['labels'],
+                },
             )
 
         elif self.return_codon:
@@ -653,31 +742,38 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
         elif self.return_aminoacid:
             return amino_batch
 
-        assert False
+        raise ValueError(
+            'Either return_codon or return_aminoacid must be True.',
+        )
 
     def torch_mask_tokens(
         self,
         inputs: Any,
-        special_tokens_mask: Optional[Any] = None,
+        special_tokens_mask: Any | None = None,
         low: int = 0,  # Custom parameter
-        high: Optional[int] = None,  # Custom parameter
-    ) -> Tuple[Any, Any]:
-        """
-        Prepare masked tokens inputs/labels for masked language modeling: 80% MASK, 10% random, 10% original.
-        """
-        import torch
+        high: int | None = None,  # Custom parameter
+    ) -> tuple[Any, Any]:
+        """Prepare masked tokens inputs/labels for masked language modeling.
 
+        Prepare masked tokens inputs/labels for masked language modeling:
+        80% MASK, 10% random, 10% original.
+        """
         labels = inputs.clone()
-        # We sample a few tokens in each sequence for MLM training (with probability `self.mlm_probability`)
+        # We sample a few tokens in each sequence for MLM training
+        # (with probability `self.mlm_probability`)
         probability_matrix = torch.full(labels.shape, self.mlm_probability)
         if special_tokens_mask is None:
             special_tokens_mask = [
                 self.tokenizer.get_special_tokens_mask(
-                    val, already_has_special_tokens=True
+                    val,
+                    already_has_special_tokens=True,
                 )
                 for val in labels.tolist()
             ]
-            special_tokens_mask = torch.tensor(special_tokens_mask, dtype=torch.bool)
+            special_tokens_mask = torch.tensor(
+                special_tokens_mask,
+                dtype=torch.bool,
+            )
         else:
             special_tokens_mask = special_tokens_mask.bool()
 
@@ -685,12 +781,14 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
         masked_indices = torch.bernoulli(probability_matrix).bool()
         labels[~masked_indices] = -100  # We only compute loss on masked tokens
 
-        # 80% of the time, we replace masked input tokens with tokenizer.mask_token ([MASK])
+        # 80% of the time, we replace masked input tokens with
+        # tokenizer.mask_token ([MASK])
         indices_replaced = (
-            torch.bernoulli(torch.full(labels.shape, 0.8)).bool() & masked_indices
+            torch.bernoulli(torch.full(labels.shape, 0.8)).bool()
+            & masked_indices
         )
         inputs[indices_replaced] = self.tokenizer.convert_tokens_to_ids(
-            self.tokenizer.mask_token
+            self.tokenizer.mask_token,
         )
 
         # 10% of the time, we replace masked input tokens with random word
@@ -701,9 +799,10 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
         )
         # Custom edit: By default, the random words are sampled from the entire
         # vocabulary. We want to sample from the same vocabulary as the input
-        # sequences (i.e. the codon sequences or aminoacid sequences, but not both).
-        # This is important because the amino acid and codon sequences are not in
-        # the same vocabulary. This is done by passing the vocab_size argument to torch.randint
+        # sequences (i.e. the codon sequences or aminoacid sequences, but not
+        # both). This is important because the amino acid and codon sequences
+        # are not in the same vocabulary. This is done by passing the
+        # vocab_size argument to torch.randint
         random_words = torch.randint(
             low=low,
             high=len(self.tokenizer) if high is None else high,
@@ -712,5 +811,6 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
         )
         inputs[indices_random] = random_words[indices_random]
 
-        # The rest of the time (10% of the time) we keep the masked input tokens unchanged
+        # The rest of the time (10% of the time) we keep the masked input
+        # tokens unchanged
         return inputs, labels

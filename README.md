@@ -32,3 +32,21 @@ qsub -A your_project -q your_queue -l select=2:system=polaris -l walltime=2:00:0
 ```console
 genslm-esm aggregate-loss-curves --training_runs_dir runs/ec_prod --output_dir examples/ec/loss_curves
 ```
+
+## Contributing
+
+For development, it is recommended to use a virtual environment. The following
+commands will create a virtual environment, install the package in editable
+mode, and install the pre-commit hooks.
+```bash
+python -m venv venv
+source venv/bin/activate
+pip install -U pip setuptools wheel
+pip install -e '.[dev,docs]'
+pre-commit install
+```
+To test the code, run the following command:
+```bash
+pre-commit run --all-files
+tox -e py310
+```
