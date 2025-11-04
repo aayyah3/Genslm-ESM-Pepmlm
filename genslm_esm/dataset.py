@@ -21,7 +21,12 @@ import torch
 
 # Need to import MPI before torch on Polaris
 # Requires commenting out to run pytests on MacOS.
-from mpi4py import MPI  # noqa: F401
+try:
+    from mpi4py import MPI
+except ImportError:
+    print('MPI not found, will not be able to use MPI-enabled datasets.')
+    MPI = None
+
 from torch.utils.data import Dataset
 from tqdm import tqdm
 from transformers import BatchEncoding
