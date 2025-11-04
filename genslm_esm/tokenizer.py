@@ -1,3 +1,4 @@
+from esm.tokenization import EsmSequenceTokenizer
 from transformers import AutoTokenizer
 
 codons = [
@@ -69,8 +70,7 @@ codons = [
 
 
 def main():
-    tokenizer = AutoTokenizer.from_pretrained("facebook/esm2_t6_8M_UR50D")
-
+    tokenizer = EsmSequenceTokenizer()
     # Get the current vocabulary
     vocabulary = tokenizer.get_vocab().keys()
 
@@ -81,7 +81,7 @@ def main():
             tokenizer.add_tokens(codon)
 
     # Save the new vocabulary
-    tokenizer.save_pretrained("tokenizer_esm_genslm")
+    tokenizer.save_pretrained("tokenizer_esmc_genslm")
 
 
 if __name__ == "__main__":

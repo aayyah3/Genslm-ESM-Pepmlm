@@ -1,4 +1,9 @@
 from __future__ import annotations
+
+# Need to import MPI before torch on Polaris
+# Requires commenting out to run pytests on MacOS.
+from mpi4py import MPI  # noqa: F401
+
 import json
 import random
 import re
@@ -86,12 +91,19 @@ translation_table = {
     "TGA": "",
 }
 
+# The valid codons are the keys of the translation table
+valid_codons = set(translation_table.keys())
+
 
 def group_codons(seq: str) -> str:
-    return " ".join(seq[i : i + 3] for i in range(0, len(seq), 3)).upper()
+    """Group codons into three-mers and replace invalid codons with '<unk>'."""
+    seq = seq.upper()
+    three_mers = (seq[i : i + 3] for i in range(0, len(seq), 3))
+    return " ".join(x if x in valid_codons else "<unk>" for x in three_mers)
 
 
 def codon_seq_to_amino_acid(codon_seq: str) -> str:
+    """Translate codons to amino acids and replace invalid codons with '<unk>'."""
     return " ".join(
         translation_table.get(codon, "<unk>") for codon in codon_seq.split()
     )
@@ -172,7 +184,7 @@ class FastaDataset(Dataset):
     def __init__(
         self,
         file_path: PathLike | None = None,
-        sequences: List[Sequence] | None = None,
+        sequences: List[str] | None = None,
         return_codon: bool = True,
         return_aminoacid: bool = False,
     ) -> None:
@@ -184,15 +196,13 @@ class FastaDataset(Dataset):
 
         # Read the fasta file
         if sequences is None:
+            assert file_path is not None
             dna_sequenes = self.read_fasta_only_seq(file_path)
         else:
             dna_sequenes = sequences
 
         # Preprocess the sequences into codons
-        # TODO: We could also use an <unk> token (this would be better)
-        self.sequences = [
-            group_codons(seq) for seq in dna_sequenes
-        ]
+        self.sequences = [group_codons(seq) for seq in dna_sequenes]
 
     def read_fasta_only_seq(self, fasta_file: PathLike) -> List[str]:
         """Reads fasta file sequences without description tag."""
@@ -230,11 +240,14 @@ class FastaDataset(Dataset):
 class FastaAminoAcidDataset(FastaDataset):
     """Assumes the fasta file contains amino acid sequences."""
 
-    def __init__(self, file_path: PathLike | None = None, sequences: List[Sequence] | None = None) -> None:
+    def __init__(
+        self, file_path: PathLike | None = None, sequences: List[str] | None = None
+    ) -> None:
         if file_path is None and sequences is None:
             raise ValueError("Either file_path or sequences must be provided.")
 
         if sequences is None:
+            assert file_path is not None
             self.sequences = self.read_fasta_only_seq(file_path)
         else:
             self.sequences = sequences
@@ -536,11 +549,13 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
         return_codon: bool = True,
         return_aminoacid: bool = False,
         train_mode: bool = False,
+        max_length: int = 2048,
         **kwargs,
     ):
         self.return_codon = return_codon
         self.return_aminoacid = return_aminoacid
         self.train_mode = train_mode
+        self.max_length = max_length
         super().__init__(**kwargs)
 
     def tokenize(self, sequences: List[str]) -> BatchEncoding:
@@ -548,7 +563,8 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
             sequences,
             return_tensors="pt",
             truncation=True,
-            padding=True,
+            padding="max_length",
+            max_length=self.max_length,
             return_special_tokens_mask=self.train_mode and self.mlm,
         )
 
@@ -600,7 +616,7 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
             # 'B': 25, 'U': 26, 'Z': 27, 'O': 28, '.': 29, '-': 30, '<null_1>': 31, '<mask>': 32,
             # Note: we also avoid sampling the special tokens '<cls>': 0, '<pad>': 1, '<eos>': 2, '<unk>': 3,
             amino_batch = self.torch_call_helper(
-                [e["aminoacid"] for e in examples], low=4, high=25
+                [e["aminoacid"] for e in examples], low=4, high=24
             )
 
         if self.return_codon and self.return_aminoacid:
