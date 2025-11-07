@@ -684,6 +684,8 @@ class ESMC(nn.Module):
         d_model (int): The dimensionality of the input and output feature vectors.
         n_heads (int): The number of attention heads in the transformer layers.
         n_layers (int): The number of transformer layers.
+        contrastive_temperature (float): The temperature for the contrastive loss.
+        use_flash_attn (bool): Whether to use flash attention.
     """
 
     def __init__(
@@ -691,6 +693,7 @@ class ESMC(nn.Module):
         d_model: int,
         n_heads: int,
         n_layers: int,
+        contrastive_temperature: float,
         use_flash_attn: bool = True,
     ):
         super().__init__()
@@ -705,7 +708,28 @@ class ESMC(nn.Module):
             use_flash_attn=self._use_flash_attn,
         )
 
+        # NOTE: This is an artifact of the ESMC model, the data is still passed
+        # through this head in the forward function, but the results are not
+        # used and loss is not computed. The actual amino acid lm_head is moved
+        # to the EsmForContrastiveMaskedLM model. The initial pLM ESMC weights
+        # stored in sequence_head are used to initialize the weights of the
+        # amino acid lm_head in the EsmForContrastiveMaskedLM model.
         self.sequence_head = RegressionHead(d_model, 64)
+
+        # Contrastive head for the alignment of codon and amino acid embeddings
+        self.contrastive_head = EsmContrastiveProjectionHead(
+            d_model=d_model,
+            contrastive_temperature=contrastive_temperature,
+        )
+
+        # Regression head for codon predictions
+        self.codon_lm_head = RegressionHead(d_model, 69)
+
+        # NOTE: This is unused and is an artifact of our original
+        # model construction. It does not get trained and not forward passes
+        # are performed through this head. We need it to load the weights
+        # properly.
+        self.lm_head = RegressionHead(d_model, 33)
 
     # @classmethod
     # def from_pretrained(
@@ -753,9 +777,9 @@ class ESMC(nn.Module):
 
         # If sequence_id looks like a mask.
         if self._use_flash_attn:
-            assert (
-                sequence_id.dtype == torch.bool
-            ), 'sequence_id must be a boolean mask if Flash Attention is used'
+            assert sequence_id.dtype == torch.bool, (
+                'sequence_id must be a boolean mask if Flash Attention is used'
+            )
             assert sequence_id.shape == (B, L)
             assert unpad_input is not None
             x, indices, *_ = unpad_input(  # type: ignore
@@ -841,7 +865,7 @@ class MeanPooler(nn.Module):
     to a single embedding (batch_size, hidden_size) by averaging.
     """
 
-    def __init__(self, config) -> None:
+    def __init__(self) -> None:
         super().__init__()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -850,7 +874,9 @@ class MeanPooler(nn.Module):
 
 
 class EsmContrastiveProjectionHead(nn.Module):
-    def __init__(self, config: ContrastiveEsmCConfig) -> None:
+    """Contrastive projection head for multi-modal alignment."""
+
+    def __init__(self, d_model: int, contrastive_temperature: float) -> None:
         super().__init__()
         # The projection representions z are trained to become invariant to
         # many gene/protein specific features
@@ -858,20 +884,18 @@ class EsmContrastiveProjectionHead(nn.Module):
         # We use a different projection head for codons and amino acids
         # since, by default, the embeddings fall into different subspaces.
         self.codon_projection = nn.Sequential(
-            nn.Linear(config.d_model, config.d_model // 2),
+            nn.Linear(d_model, d_model // 2),
             nn.ReLU(),
-            nn.Linear(config.d_model // 2, config.d_model // 4),
+            nn.Linear(d_model // 2, d_model // 4),
         )
         self.aminoacid_projection = nn.Sequential(
-            nn.Linear(config.d_model, config.d_model // 2),
+            nn.Linear(d_model, d_model // 2),
             nn.ReLU(),
-            nn.Linear(config.d_model // 2, config.d_model // 4),
+            nn.Linear(d_model // 2, d_model // 4),
         )
 
-        self.loss_fn = ContrastiveLoss(
-            temperature=config.contrastive_temperature,
-        )
-        self.pooler = MeanPooler(config)
+        self.loss_fn = ContrastiveLoss(temperature=contrastive_temperature)
+        self.pooler = MeanPooler()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Assumes that the codon embeddings are the first half of the tensor
@@ -914,22 +938,12 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
             d_model=config.d_model,
             n_heads=config.n_heads,
             n_layers=config.n_layers,
+            contrastive_temperature=config.contrastive_temperature,
             use_flash_attn=config.use_flash_attn,
         )
 
-        # Regression head for amino acids
-        self.lm_head = RegressionHead(d_model=config.d_model, output_dim=33)
-
-        # Regression head for codons
-        self.transformer.codon_lm_head = RegressionHead(
-            d_model=config.d_model,
-            output_dim=69,
-        )
-
-        # Contrastive head for the contrastive loss
-        self.transformer.contrastive_head = EsmContrastiveProjectionHead(
-            config,
-        )
+        # Regression head for amino acid predictions
+        self.lm_head = RegressionHead(config.d_model, 64)
 
         # Initialize weights and apply final processing
         self.post_init()
