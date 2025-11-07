@@ -1134,6 +1134,7 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
 
 
 if __name__ == '__main__':
+    from torch.utils.data import DataLoader
     from transformers import EsmTokenizer
 
     from genslm_esm.dataset import FastaDataset
@@ -1189,14 +1190,25 @@ if __name__ == '__main__':
         return_aminoacid=True,
     )
 
+    # Create the collator
     collator = GenSLMColatorForLanguageModeling(
         return_codon=True,
         return_aminoacid=True,
         tokenizer=tokenizer,
     )
 
-    for item in dataset:
-        test_input = collator(item).to(device)
-        print(test_input)
-        outputs = model(**test_input)
+    # Create the dataloader
+    dataloader = DataLoader(
+        dataset,
+        batch_size=2,
+        collate_fn=collator,
+        num_workers=0,
+        pin_memory=True,
+    )
+
+    # Iterate over the dataloader
+    for batch in dataloader:
+        batch = batch.to(device)
+        print(batch)
+        outputs = model(**batch)
         print(outputs.loss)
