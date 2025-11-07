@@ -19,6 +19,7 @@ classifiers = [
 dependencies = [
     "accelerate",
     "torch",
+    "einops",
     "datasets",
     "sentencepiece",
     "transformers<4.51",

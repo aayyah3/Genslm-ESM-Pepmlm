@@ -6,7 +6,6 @@ import functools
 import math
 from dataclasses import dataclass
 from typing import Optional
-from typing import Tuple
 from typing import Union
 
 import einops
@@ -44,12 +43,14 @@ try:
 except (ImportError, RuntimeError):
     comm, rank, size = None, None, None
 
-from esm.tokenization import EsmSequenceTokenizer
-from esm.utils.constants.models import ESMC_600M
 
+# from esm.utils.constants.models import ESMC_600M
 from .configuration import ContrastiveEsmCConfig
 
 logger = logging.get_logger(__name__)
+
+# ESMC pad token id
+ESMC_PAD_TOKEN_ID = 1
 
 
 def rotate_half(x, interleaved=False):
@@ -240,7 +241,7 @@ class RotaryEmbedding(torch.nn.Module):
         q: torch.Tensor,
         k: torch.Tensor,
         seqlen_offset: int = 0,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         q: (batch, seqlen, nheads, headdim)
         k: (batch, seqlen, nheads, headdim)
@@ -690,7 +691,6 @@ class ESMC(nn.Module):
         d_model: int,
         n_heads: int,
         n_layers: int,
-        tokenizer: EsmSequenceTokenizer,
         use_flash_attn: bool = True,
     ):
         super().__init__()
@@ -705,25 +705,24 @@ class ESMC(nn.Module):
         )
 
         self.sequence_head = RegressionHead(d_model, 64)
-        self.tokenizer = tokenizer
 
-    @classmethod
-    def from_pretrained(
-        cls,
-        model_name: str = ESMC_600M,
-        device: torch.device | None = None,
-    ) -> ESMC:
-        from esm.pretrained import load_local_model
+    # @classmethod
+    # def from_pretrained(
+    #     cls,
+    #     model_name: str = ESMC_600M,
+    #     device: torch.device | None = None,
+    # ) -> ESMC:
+    #     from esm.pretrained import load_local_model
 
-        if device is None:
-            device = torch.device(
-                'cuda' if torch.cuda.is_available() else 'cpu',
-            )
-        model = load_local_model(model_name, device=device)
-        if device.type != 'cpu':
-            model = model.to(torch.bfloat16)
-        assert isinstance(model, ESMC)
-        return model
+    #     if device is None:
+    #         device = torch.device(
+    #             'cuda' if torch.cuda.is_available() else 'cpu',
+    #         )
+    #     model = load_local_model(model_name, device=device)
+    #     if device.type != 'cpu':
+    #         model = model.to(torch.bfloat16)
+    #     assert isinstance(model, ESMC)
+    #     return model
 
     def forward(
         self,
@@ -743,8 +742,9 @@ class ESMC(nn.Module):
             ESMCOutput: The output of the ESMC model.
         """
         if sequence_id is None:
-            # For EMSC, a boolean mask is created in place of sequence_id if not specified.
-            sequence_id = sequence_tokens != self.tokenizer.pad_token_id
+            # For EMSC, a boolean mask is created in place of sequence_id
+            # if not specified.
+            sequence_id = sequence_tokens != ESMC_PAD_TOKEN_ID
 
         x = self.embed(sequence_tokens)
 
@@ -909,7 +909,6 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
             d_model=config.d_model,
             n_heads=config.n_heads,
             n_layers=config.n_layers,
-            tokenizer=config.tokenizer,  # TODO: Make it not depend on the tokenizer
             use_flash_attn=config.use_flash_attn,
         )
 
@@ -953,7 +952,7 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
         return_dict: Optional[bool] = None,
         decode_aminoacid_head: bool = False,
         decode_codon_head: bool = False,
-    ) -> Union[Tuple, MaskedLMOutput]:
+    ) -> Union[tuple, MaskedLMOutput]:
         r"""
         Labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
             Labels for computing the masked language modeling loss. Indices should be in `[-100, 0, ...,
