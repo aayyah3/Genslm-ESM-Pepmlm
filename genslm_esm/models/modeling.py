@@ -1136,6 +1136,7 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
 if __name__ == '__main__':
     from transformers import EsmTokenizer
 
+    from genslm_esm.dataset import FastaDataset
     from genslm_esm.dataset import GenSLMColatorForLanguageModeling
 
     model_path = '/nfs/lambda_stor_01/homes/abrace/projects/genslm/src/genslm-tutorial-05-2025/model/checkpoint-203847'
@@ -1175,22 +1176,27 @@ if __name__ == '__main__':
     print('Tokenizer:')
     print(tokenizer)
 
+    # Test sequences
+    sequences = [
+        'ATGAAGGTACTACCACAAGAAACTGTAAGAATTGGA',
+        'ATGGACAAAACACATATTCGACTATCTGTTGACAATCCATTTGCAAAACTA',
+    ]
+
+    # The dataset splits the sequences into codons
+    dataset = FastaDataset(
+        sequences=sequences,
+        return_codon=True,
+        return_aminoacid=True,
+    )
+
     collator = GenSLMColatorForLanguageModeling(
         return_codon=True,
         return_aminoacid=True,
         tokenizer=tokenizer,
     )
-    test_input = [
-        {
-            'aminoacid': 'MKVLPQETVRIG',  # 12 residues
-            'codon': 'ATGAAGGTACTACCACAAGAAACTGTAAGAATTGGA',  # 36 nucleotides
-        },
-        {
-            'aminoacid': 'MDKTHIRLSVDNPFAKL',  # 16 residues
-            'codon': 'ATGGACAAAACACATATTCGACTATCTGTTGACAATCCATTTGCAAAACTA',  # 48 nucleotides
-        },
-    ]
-    test_input = collator(test_input).to(device)
-    print(test_input)
-    outputs = model(**test_input)
-    print(outputs.loss)
+
+    for item in dataset:
+        test_input = collator(item).to(device)
+        print(test_input)
+        outputs = model(**test_input)
+        print(outputs.loss)
