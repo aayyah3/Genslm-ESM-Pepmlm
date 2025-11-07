@@ -1182,9 +1182,6 @@ if __name__ == '__main__':
         return_codon=True,
         return_aminoacid=True,
         tokenizer=tokenizer,
-        mlm=True,
-        train_mode=True,
-        mlm_probability=0.15,
     )
     test_input = [
         {
