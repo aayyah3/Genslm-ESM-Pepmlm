@@ -45,7 +45,7 @@ except (ImportError, RuntimeError):
 
 
 # from esm.utils.constants.models import ESMC_600M
-from .configuration import ContrastiveEsmCConfig
+from genslm_esm.models.configuration import ContrastiveEsmCConfig
 
 logger = logging.get_logger(__name__)
 
@@ -901,6 +901,10 @@ class EsmContrastiveProjectionHead(nn.Module):
 class EsmCForContrastiveMaskedLM(PreTrainedModel):
     """ESMC for contrastive masked language modeling."""
 
+    # Set the configuration class for the model to use for
+    # initialization via from_pretrained()
+    config_class = ContrastiveEsmCConfig
+
     def __init__(self, config: ContrastiveEsmCConfig) -> None:
         super().__init__(config)
         self.config = config
@@ -1115,9 +1119,9 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
 
 
 if __name__ == '__main__':
-    from dataset import GenSLMColatorForLanguageModeling
+    from genslm_esm.dataset import GenSLMColatorForLanguageModeling
 
-    model_path = '/lus/eagle/projects/FoundEpidem/azton/esmc_models/esmc_300m'
+    model_path = '/nfs/lambda_stor_01/homes/abrace/projects/genslm/src/genslm-tutorial-05-2025/model/checkpoint-203847'
     model_name = 'ESMC_300M'
     tokenizer_path = '/lus/eagle/projects/CVD-Mol-AI/braceal/src/genslm-esm/tokenizer_esm_genslm'
 
@@ -1138,7 +1142,7 @@ if __name__ == '__main__':
     # )
 
     model = None
-    model = EsmCForContrastiveMaskedLM.from_pretrained('./TestESMCSave_AA')
+    model = EsmCForContrastiveMaskedLM.from_pretrained(model_path)
     print('Reloaded model:')
     print(model)
 
