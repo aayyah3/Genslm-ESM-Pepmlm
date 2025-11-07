@@ -1161,6 +1161,19 @@ if __name__ == '__main__':
     print('Reloaded model:')
     print(model)
 
+    # # Get the device to run the model on
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    # Move the model to the device
+    model = model.to(device)
+
+    # Convert the model to bfloat16 if not on CPU
+    if device.type != 'cpu':
+        model = model.to(torch.bfloat16)
+
+    print(f'Model is on device: {next(model.parameters()).device}')
+    print(f'Model dtype: {next(model.parameters()).dtype}')
+
     tokenizer = EsmTokenizer.from_pretrained(model_path)
     print('Tokenizer:')
     print(tokenizer)
@@ -1183,7 +1196,7 @@ if __name__ == '__main__':
             'codon': 'ATGGACAAAACACATATTCGACTATCTGTTGACAATCCATTTGCAAAACTA',  # 48 nucleotides
         },
     ]
-    test_input = collator(test_input)
+    test_input = collator(test_input).to(device)
     print(test_input)
     outputs = model(**test_input)
     print(outputs.loss)
