@@ -15,7 +15,6 @@ class ContrastiveEsmCConfig(PretrainedConfig):
         d_model: int = 960,
         n_heads: int = 15,
         n_layers: int = 30,
-        tokenizer_name_or_path: str | None = None,
         compute_aminoacid_loss: bool = True,
         compute_codon_loss: bool = False,
         compute_contrastive_loss: bool = False,
@@ -30,7 +29,6 @@ class ContrastiveEsmCConfig(PretrainedConfig):
         self.d_model = d_model if '300M' in model_name else 1152
         self.n_heads = n_heads if '300M' in model_name else 18
         self.n_layers = n_layers if '300M' in model_name else 36
-        self.tokenizer_name_or_path = tokenizer_name_or_path
         self.compute_aminoacid_loss = compute_aminoacid_loss
         self.compute_codon_loss = compute_codon_loss
         self.compute_contrastive_loss = compute_contrastive_loss

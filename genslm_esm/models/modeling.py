@@ -1140,12 +1140,10 @@ if __name__ == '__main__':
 
     model_path = '/nfs/lambda_stor_01/homes/abrace/projects/genslm/src/genslm-tutorial-05-2025/model/checkpoint-203847'
     model_name = 'ESMC_300M'
-    tokenizer_path = '/lus/eagle/projects/CVD-Mol-AI/braceal/src/genslm-esm/tokenizer_esm_genslm'
 
     config = ContrastiveEsmCConfig(
         model_name=model_name,
         base_model_path=model_path,
-        tokenizer_name_or_path=tokenizer_path,
         compute_contrastive_loss=True,
         compute_aminoacid_loss=True,
         compute_codon_loss=True,
@@ -1163,7 +1161,7 @@ if __name__ == '__main__':
     print('Reloaded model:')
     print(model)
 
-    tokenizer = EsmTokenizer.from_pretrained(tokenizer_path)
+    tokenizer = EsmTokenizer.from_pretrained(model_path)
     print('Tokenizer:')
     print(tokenizer)
 
