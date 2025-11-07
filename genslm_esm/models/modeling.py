@@ -1149,15 +1149,12 @@ if __name__ == '__main__':
         compute_codon_loss=True,
     )
 
-    # model = EsmCForContrastiveMaskedLM(config)
-    # print(model)
-    # model.update_model_weights(model.transformer.tokenizer)
-    # model.save_pretrained(
-    #     './TestESMCSave_AA',
-    # )
-
-    model = None
+    # Load the model from the checkpoint
     model = EsmCForContrastiveMaskedLM.from_pretrained(model_path)
+
+    # Set the model to evaluation mode
+    model.eval()
+
     print('Reloaded model:')
     print(model)
 
