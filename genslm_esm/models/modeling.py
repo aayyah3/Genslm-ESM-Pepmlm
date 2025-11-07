@@ -694,7 +694,8 @@ class ESMC(nn.Module):
         use_flash_attn: bool = True,
     ):
         super().__init__()
-        self.embed = nn.Embedding(64, d_model)
+        # 97 tokens: 64 codons + 20 amino acids + 11 special tokens / extras
+        self.embed = nn.Embedding(97, d_model)
 
         self._use_flash_attn = is_flash_attn_available and use_flash_attn
         self.transformer = TransformerStack(
@@ -752,9 +753,9 @@ class ESMC(nn.Module):
 
         # If sequence_id looks like a mask.
         if self._use_flash_attn:
-            assert sequence_id.dtype == torch.bool, (
-                'sequence_id must be a boolean mask if Flash Attention is used'
-            )
+            assert (
+                sequence_id.dtype == torch.bool
+            ), 'sequence_id must be a boolean mask if Flash Attention is used'
             assert sequence_id.shape == (B, L)
             assert unpad_input is not None
             x, indices, *_ = unpad_input(  # type: ignore
