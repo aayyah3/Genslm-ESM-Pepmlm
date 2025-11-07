@@ -1134,6 +1134,8 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
 
 
 if __name__ == '__main__':
+    from transformers import EsmTokenizer
+
     from genslm_esm.dataset import GenSLMColatorForLanguageModeling
 
     model_path = '/nfs/lambda_stor_01/homes/abrace/projects/genslm/src/genslm-tutorial-05-2025/model/checkpoint-203847'
@@ -1161,10 +1163,14 @@ if __name__ == '__main__':
     print('Reloaded model:')
     print(model)
 
+    tokenizer = EsmTokenizer.from_pretrained(tokenizer_path)
+    print('Tokenizer:')
+    print(tokenizer)
+
     collator = GenSLMColatorForLanguageModeling(
         return_codon=True,
         return_aminoacid=True,
-        tokenizer=model.transformer.tokenizer,
+        tokenizer=tokenizer,
         mlm=True,
         train_mode=True,
         mlm_probability=0.15,
