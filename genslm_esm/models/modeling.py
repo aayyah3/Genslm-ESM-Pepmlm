@@ -730,24 +730,6 @@ class ESMC(nn.Module):
         # properly.
         self.lm_head = RegressionHead(d_model, 33)
 
-    # @classmethod
-    # def from_pretrained(
-    #     cls,
-    #     model_name: str = ESMC_600M,
-    #     device: torch.device | None = None,
-    # ) -> ESMC:
-    #     from esm.pretrained import load_local_model
-
-    #     if device is None:
-    #         device = torch.device(
-    #             'cuda' if torch.cuda.is_available() else 'cpu',
-    #         )
-    #     model = load_local_model(model_name, device=device)
-    #     if device.type != 'cpu':
-    #         model = model.to(torch.bfloat16)
-    #     assert isinstance(model, ESMC)
-    #     return model
-
     def forward(
         self,
         sequence_tokens: torch.Tensor | None = None,
@@ -776,9 +758,9 @@ class ESMC(nn.Module):
 
         # If sequence_id looks like a mask.
         if self._use_flash_attn:
-            assert (
-                sequence_id.dtype == torch.bool
-            ), 'sequence_id must be a boolean mask if Flash Attention is used'
+            assert sequence_id.dtype == torch.bool, (
+                'sequence_id must be a boolean mask if Flash Attention is used'
+            )
             assert sequence_id.shape == (B, L)
             assert unpad_input is not None
             x, indices, *_ = unpad_input(  # type: ignore
@@ -1280,15 +1262,6 @@ if __name__ == '__main__':
     from genslm_esm.dataset import GenSLMColatorForLanguageModeling
 
     model_path = '/nfs/lambda_stor_01/homes/abrace/projects/genslm/src/genslm-tutorial-05-2025/model/checkpoint-203847'
-    model_name = 'ESMC_300M'
-
-    config = ContrastiveEsmCConfig(
-        model_name=model_name,
-        base_model_path=model_path,
-        compute_contrastive_loss=True,
-        compute_aminoacid_loss=True,
-        compute_codon_loss=True,
-    )
 
     # Load the model from the checkpoint
     model = EsmCForContrastiveMaskedLM.from_pretrained(model_path)
@@ -1299,7 +1272,7 @@ if __name__ == '__main__':
     print('Reloaded model:')
     print(model)
 
-    # # Get the device to run the model on
+    # Get the device to run the model on
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # Move the model to the device
