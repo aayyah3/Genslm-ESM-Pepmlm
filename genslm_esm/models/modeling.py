@@ -5,8 +5,7 @@ from __future__ import annotations
 import functools
 import math
 from dataclasses import dataclass
-from typing import Optional
-from typing import Union
+from typing import cast
 
 import einops
 import torch
@@ -16,7 +15,7 @@ from einops import repeat
 from torch import nn
 from transformers import logging
 from transformers import PreTrainedModel
-from transformers.models.esm.modeling_esm import MaskedLMOutput
+from transformers.modeling_outputs import ModelOutput
 
 try:
     from flash_attn import flash_attn_varlen_qkvpacked_func  # type: ignore
@@ -777,9 +776,9 @@ class ESMC(nn.Module):
 
         # If sequence_id looks like a mask.
         if self._use_flash_attn:
-            assert sequence_id.dtype == torch.bool, (
-                'sequence_id must be a boolean mask if Flash Attention is used'
-            )
+            assert (
+                sequence_id.dtype == torch.bool
+            ), 'sequence_id must be a boolean mask if Flash Attention is used'
             assert sequence_id.shape == (B, L)
             assert unpad_input is not None
             x, indices, *_ = unpad_input(  # type: ignore
@@ -923,6 +922,45 @@ class EsmContrastiveProjectionHead(nn.Module):
         return self.loss_fn(z)
 
 
+@dataclass
+class EsmCForContrastiveMaskedLMOutput(ModelOutput):
+    """
+    Base class for ESM-C for contrastive masked language models outputs.
+
+    Args:
+        loss (`torch.FloatTensor` of shape `(1,)`, *optional*, returned when `labels` is provided):
+            Masked language modeling (MLM) loss.
+        logits (`torch.FloatTensor` of shape `(batch_size, sequence_length, config.vocab_size)`):
+            Prediction scores of the language modeling head (scores for each vocabulary token before SoftMax).
+        hidden_states (`tuple(torch.FloatTensor)`, *optional*, returned when `output_hidden_states=True` is passed or when `config.output_hidden_states=True`):
+            Tuple of `torch.FloatTensor` (one for the output of the embeddings, if the model has an embedding layer, +
+            one for the output of each layer) of shape `(batch_size, sequence_length, hidden_size)`.
+
+            Hidden-states of the model at the output of each layer plus the optional initial embedding outputs.
+        attentions (`tuple(torch.FloatTensor)`, *optional*, returned when `output_attentions=True` is passed or when `config.output_attentions=True`):
+            Tuple of `torch.FloatTensor` (one for each layer) of shape `(batch_size, num_heads, sequence_length,
+            sequence_length)`.
+
+            Attentions weights after the attention softmax, used to compute the weighted average in the self-attention
+            heads.
+    """
+
+    # The losses output by the model
+    loss: torch.FloatTensor | None = None
+    contrastive_loss: torch.FloatTensor | None = None
+    mlm_loss: torch.FloatTensor | None = None
+    codon_mlm_loss: torch.FloatTensor | None = None
+    aminoacid_mlm_loss: torch.FloatTensor | None = None
+
+    # The logits output by the model
+    codon_logits: torch.FloatTensor | None = None
+    aminoacid_logits: torch.FloatTensor | None = None
+
+    # The hidden states output by the model
+    hidden_states: tuple[torch.FloatTensor, ...] | None = None
+    attentions: tuple[torch.FloatTensor, ...] | None = None
+
+
 class EsmCForContrastiveMaskedLM(PreTrainedModel):
     """ESMC for contrastive masked language modeling."""
 
@@ -945,191 +983,292 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
         # Regression head for amino acid predictions
         self.lm_head = RegressionHead(config.d_model, 64)
 
+        # Loss function for masked language modeling
+        self.loss_fct = nn.CrossEntropyLoss()
+
         # Initialize weights and apply final processing
         self.post_init()
 
     def get_output_embeddings(self) -> None:
+        """Get the output embeddings of the model."""
         # NOTE: get_output_embeddings() must return None to prevent accidental
         # weight tying. See e.g. https://github.com/huggingface/transformers/pull/39339#discussion_r2219126400
         return None
 
-    def forward(
+    def _compute_mlm_loss(
         self,
-        input_ids: Optional[torch.LongTensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        codon_input_ids: Optional[torch.LongTensor] = None,
-        codon_attention_mask: Optional[torch.Tensor] = None,
-        codon_labels: Optional[torch.LongTensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        head_mask: Optional[torch.Tensor] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
-        labels: Optional[torch.LongTensor] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
+        logits: torch.FloatTensor,
+        labels: torch.LongTensor,
+    ) -> torch.FloatTensor:
+        """Compute the masked language modeling loss."""
+        return self.loss_fct(
+            logits.view(-1, logits.shape[-1]),
+            labels.view(-1),
+        )
+
+    def forward(  # noqa: C901, PLR0912, PLR0913, PLR0915
+        self,
+        aminoacid_input_ids: torch.LongTensor | None = None,
+        aminoacid_attention_mask: torch.Tensor | None = None,
+        aminoacid_labels: torch.LongTensor | None = None,
+        codon_input_ids: torch.LongTensor | None = None,
+        codon_attention_mask: torch.Tensor | None = None,
+        codon_labels: torch.LongTensor | None = None,
         decode_aminoacid_head: bool = False,
         decode_codon_head: bool = False,
-    ) -> Union[tuple, MaskedLMOutput]:
-        r"""
-        Labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
+        compute_contrastive_loss: bool = False,
+    ) -> EsmCForContrastiveMaskedLMOutput:
+        """Forward pass for the ESM for contrastive masked language modeling.
+
+        Parameters
+        ----------
+        aminoacid_input_ids: torch.LongTensor | None
+            Input ids for the amino acid sequences (batch_size, sequence_length)
+        aminoacid_attention_mask: torch.Tensor | None
+            Attention mask for the amino acid sequences (batch_size, sequence_length)
+        aminoacid_labels: torch.LongTensor | None
             Labels for computing the masked language modeling loss. Indices should be in `[-100, 0, ...,
             config.vocab_size]` (see `input_ids` docstring) Tokens with indices set to `-100` are ignored (masked), the
-            loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`
-        kwargs (`Dict[str, any]`, optional, defaults to *{}*):
-            Used to hide legacy arguments that have been deprecated.
+            loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`. (batch_size, sequence_length)
+        codon_input_ids: torch.LongTensor | None
+            Input ids for the codon sequences (batch_size, sequence_length)
+        codon_attention_mask: torch.Tensor | None
+            Attention mask for the codon sequences (batch_size, sequence_length)
+        codon_labels: torch.LongTensor | None
+            Labels for computing the masked language modeling loss. Indices should be in `[-100, 0, ...,
+            config.vocab_size]` (see `input_ids` docstring) Tokens with indices set to `-100` are ignored (masked), the
+            loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`. (batch_size, sequence_length)
         decode_aminoacid_head (`bool`, optional, defaults to False):
             Whether to use the amino acid head for prediction, regardless of config settings.
         decode_codon_head (`bool`, optional, defaults to False):
             Whether to use the codon head for prediction, regardless of config settings.
+        compute_contrastive_loss: bool
+            Whether to compute the contrastive loss.
         """
-        return_dict = (
-            return_dict
-            if return_dict is not None
-            else self.config.use_return_dict
-        )
+        # Validate the input arguments
+        # ================================================================
+        if (
+            aminoacid_input_ids is not None
+            and aminoacid_attention_mask is None
+        ):
+            raise ValueError(
+                'aminoacid_attention_mask must be provided if '
+                'aminoacid_input_ids is not None',
+            )
+        if codon_input_ids is not None and codon_attention_mask is None:
+            raise ValueError(
+                'codon_attention_mask must be provided if '
+                'codon_input_ids is not None',
+            )
 
-        # Note: We needed to pass the codon input_ids and attention_mask separately
-        # since the distrubted sampler shuffles the codon and amino acid sequences
-        # and there was no way to guarantee that the codon and amino acid sequences
-        # would be index properly for the contrastive loss.
+        # NOTE: We need to pass the codon and amino acid input_ids and
+        # attention_masks separately since the distrubted sampler shuffles the
+        # codon and amino acid sequences and there was no way to guarantee that
+        # the codon and amino acid sequences would be indexed properly for the
+        # contrastive loss.
 
-        # Pack the amino acid and codon input_ids and attention_mask into a single tensor
-        # This avoids two separate forward passes through the model but effectively doubles
-        # the batch size.
-        if input_ids is not None and codon_input_ids is not None:
-            input_ids = torch.cat([codon_input_ids, input_ids], dim=0)
-        if attention_mask is not None and codon_attention_mask is not None:
-            attention_mask = torch.cat(
-                [codon_attention_mask, attention_mask],
+        # Forward pass through the transformer
+        # ================================================================
+        # Pack the amino acid and codon input_ids and attention_mask into a
+        # single tensor. This avoids two separate forward passes through the
+        # model but effectively doubles the batch size.
+        if aminoacid_input_ids is not None and codon_input_ids is not None:
+            assert codon_attention_mask is not None
+            assert aminoacid_attention_mask is not None
+            input_ids = torch.cat(
+                [codon_input_ids, aminoacid_input_ids],
                 dim=0,
             )
-
-        # Note: During inference we can pass either the amino acid or codon sequences
-        # but not both. If we pass both, then the model will try to stack the amino acid
-        # and codon input ids and attention masks as shown above, and this may not be
-        # the desired behavior.
-        # if codon_input_ids is not None and input_ids is None:
-        #    input_ids = codon_input_ids
-        #    assert (
-        #        codon_attention_mask is not None
-        #    ), "Please provide codon_attention_mask"
-        #    attention_mask = codon_attention_mask
-        #    self.config.compute_codon_loss = True
-        #    self.config.compute_aminoacid_loss = False
-
-        # elif input_ids is not None and codon_input_ids is None:
-        #    assert (
-        #        attention_mask is not None
-        #    ), "Please provide attention_mask for amino acid sequences"
-        #    self.config.compute_codon_loss = False
-        #    self.config.compute_aminoacid_loss = True
-
-        # ESMC doesnt have the standard HF interface...
-        outputs = self.transformer(
-            sequence_tokens=input_ids,
-            sequence_id=attention_mask,
-        )
-
-        # Output shape: (batch_size, seq_length, hidden_size)
-        sequence_output = outputs.hidden_states[-1]
-
-        # Compute the logits / prediction scores for each head
-        # Override config settings if explicit head flags are provided
-        compute_aminoacid = decode_aminoacid_head or (
-            self.config.compute_aminoacid_loss and not decode_codon_head
-        )
-        compute_codon = decode_codon_head or (
-            self.config.compute_codon_loss and not decode_aminoacid_head
-        )
-
-        if compute_aminoacid and compute_codon:
-            # Split the sequence output into codon and amino acid embeddings
-            # These have shape (batch_size // 2, seq_length, hidden_size)
-            half_batch_size = sequence_output.shape[0] // 2
-            codon_embed = sequence_output[:half_batch_size]
-            amino_embed = sequence_output[half_batch_size:]
-            codon_prediction_scores = self.transformer.codon_lm_head(
-                codon_embed,
+            attention_mask = torch.cat(
+                [codon_attention_mask, aminoacid_attention_mask],
+                dim=0,
             )
-            amino_prediction_scores = self.lm_head(amino_embed)
-            # The prediction scores have different vocab sizes, so we can't concatenate them.
-            # Instead, we return the aminoacid scores (during inference, set either
-            # compute_aminoacid_loss or compute_codon_loss to False)
-            prediction_scores = amino_prediction_scores
-        elif compute_aminoacid:
-            prediction_scores = self.lm_head(sequence_output)
-        elif compute_codon:
-            prediction_scores = self.transformer.codon_lm_head(sequence_output)
+        elif aminoacid_input_ids is not None:
+            input_ids = aminoacid_input_ids
+        elif codon_input_ids is not None:
+            input_ids = codon_input_ids
         else:
             raise ValueError(
-                'Either compute_aminoacid_loss or compute_codon_loss must be True, or use_aminoacid_head or use_codon_head must be True',
+                'Must provide either codon_input_ids or aminoacid_input_ids',
             )
 
-        masked_lm_loss = None
-        if labels is not None:
-            loss_fct = nn.CrossEntropyLoss()
+        # Pass the input_ids and attention_mask to the transformer
+        outputs = cast(
+            ESMCOutput,
+            self.transformer(
+                sequence_tokens=input_ids,
+                sequence_id=attention_mask,
+            ),
+        )
 
-            # Compute the masked language modeling loss for each head
-            if (
-                self.config.compute_aminoacid_loss
-                and self.config.compute_codon_loss
-            ):
-                # Split the labels into codon and amino acid labels
-                # These have shape (batch_size // 2, seq_length)
-                # half_batch_size = labels.shape[0] // 2
-                # codon_labels = labels[:half_batch_size]
-                # aminoacid_labels = labels[half_batch_size:]
+        # Token embeddings from the last layer of the transformer.
+        # This has shape: (batch_size, seq_length, d_model)
+        sequence_output = outputs.hidden_states[-1]
 
-                # Compute the masked language modeling loss for each head
-                aminoacid_masked_lm_loss = loss_fct(
-                    amino_prediction_scores.view(
-                        -1,
-                        amino_prediction_scores.shape[-1],
-                    ),
-                    labels.view(-1),  # The labels store the amino acid labels
+        # Handle multi-modal learning for joint and contrastive pre-training
+        # ================================================================
+        # Initialize contrastive loss and logits to None
+        contrastive_loss, codon_logits, aminoacid_logits = None, None, None
+
+        # If both modalities are passed, then we need to split the sequence
+        # output into codon and amino acid embeddings to compute logits using
+        # the respective heads.
+        if codon_input_ids is not None and aminoacid_input_ids is not None:
+            # TODO: Should we require decode_aminoacid_head or decode_codon_head
+            # to be None in this case?
+            # if decode_aminoacid_head or decode_codon_head:
+            #     raise ValueError(
+            #         'decode_aminoacid_head and decode_codon_head must be None '
+            #         'when both codon_input_ids and aminoacid_input_ids are provided',
+            #     )
+
+            # NOTE: sequence_output stores the concatenated codon and amino
+            # acid embeddings here.
+
+            # NOTE: this case is primarily used for training the model, it
+            # does not require passing decode_aminoacid_head or
+            # decode_codon_head.
+
+            # Split the sequence output into codon and amino acid embeddings
+            # to compute logits using the respective heads.
+            # These have shape (batch_size // 2, seq_length, d_model)
+            half_batch_size = sequence_output.shape[0] // 2
+            codon_embed = sequence_output[:half_batch_size]
+            aminoacid_embed = sequence_output[half_batch_size:]
+
+            # Compute the logits for the codon and amino acid heads
+            codon_logits = self.transformer.codon_lm_head(codon_embed)
+            aminoacid_logits = self.lm_head(aminoacid_embed)
+
+            # Compute the contrastive loss if requested to align the
+            # codon and amino acid embeddings.
+            if compute_contrastive_loss:
+                contrastive_loss = self.transformer.contrastive_head(
+                    sequence_output,
                 )
-                codon_masked_lm_loss = loss_fct(
-                    codon_prediction_scores.view(
-                        -1,
-                        codon_prediction_scores.shape[-1],
-                    ),
-                    codon_labels.view(-1),
-                )
-                # Add the two losses together
-                masked_lm_loss = (
-                    codon_masked_lm_loss + aminoacid_masked_lm_loss
-                ) / 2.0
 
-            else:
-                # # (-1, vocab_size) is the shape of the prediction scores
-                masked_lm_loss = loss_fct(
-                    prediction_scores.view(-1, prediction_scores.shape[-1]),
-                    labels.view(-1),
-                )
+        # Handle multi-modal translation tasks
+        # ================================================================
 
-        # Custom logic to compute a contrastive loss between Codons and Amino Acid embeddings.
-        # Everything else in this function is the same as the base class implementation.
-        if labels is not None and self.config.compute_contrastive_loss:
-            # Compute the contrastive loss following SimCLR and add it to the masked language modeling loss
-            masked_lm_loss += self.transformer.contrastive_head(
-                sequence_output,
+        # 1. Reverse translation case (amino acid -> codon)
+        # ----------------------------------------------------------------
+        # If (aminoacid_input_ids is not None and decode_codon_head),
+        # then sequence_output stores the amino acid embeddings here
+        # and the task is to predict the codon labels given the amino acid
+        # embeddings. If the codon_labels are provided, the codon_mlm_loss
+        # represents the accuracy of the reverse translation task. The
+        # aminoacid_mlm_loss is also computed for completeness to enable
+        # checking the perplexity of the input amino acid sequences.
+        # ----------------------------------------------------------------
+
+        # 2. Forward translation case (codon -> amino acid)
+        # ----------------------------------------------------------------
+        # If (codon_input_ids is not None and decode_aminoacid_head),
+        # then sequence_output stores the codon embeddings here and the
+        # task is to predict the amino acid labels given the codon embeddings.
+        # If the aminoacid_labels are provided, the aminoacid_mlm_loss
+        # represents the accuracy of the forward translation task. The
+        # codon_mlm_loss is also computed for completeness to enable checking
+        # the model perplexity of the input codon sequences.
+        # ----------------------------------------------------------------
+        elif (aminoacid_input_ids is not None and decode_codon_head) or (
+            codon_input_ids is not None and decode_aminoacid_head
+        ):
+            # Predict the codon logits given the embeddings
+            codon_logits = self.transformer.codon_lm_head(sequence_output)
+            # Predict the amino acid logits given the embeddings
+            aminoacid_logits = self.lm_head(sequence_output)
+
+        # 3. Standard codon language modeling task
+        # ================================================================
+        elif codon_input_ids is not None:
+            # NOTE: sequence_output stores the codon embeddings here.
+            # Compute the logits for the codon head given the embeddings
+            codon_logits = self.transformer.codon_lm_head(sequence_output)
+
+        # 4. Standard amino acid language modeling task
+        # ================================================================
+        elif aminoacid_input_ids is not None:
+            # NOTE: sequence_output stores the amino acid embeddings here.
+            # Compute the logits for the amino acid head given the embeddings
+            aminoacid_logits = self.lm_head(sequence_output)
+
+        # If no input_ids are provided, raise an error (should never happen)
+        else:
+            raise ValueError(
+                'Must provide either codon_input_ids or aminoacid_input_ids',
             )
 
-        if not return_dict:
-            output = (prediction_scores,) + outputs[2:]
-            return (
-                ((masked_lm_loss,) + output)
-                if masked_lm_loss is not None
-                else output
-            )
+        # Compute masked language modeling losses using the logits and labels
+        # ================================================================
+        # If codon labels and logits are available, compute the MLM loss
+        # for the codon head, otherwise set the loss to None.
+        if codon_labels is not None and codon_logits is not None:
+            codon_mlm_loss = self._compute_mlm_loss(codon_logits, codon_labels)
+        else:
+            codon_mlm_loss = None
 
-        return MaskedLMOutput(
-            loss=masked_lm_loss,
-            logits=prediction_scores,
+        # If the amino acid labels and logits are available, compute the MLM
+        # loss for the amino acid head, otherwise set the loss to None.
+        if aminoacid_labels is not None and aminoacid_logits is not None:
+            aminoacid_mlm_loss = self._compute_mlm_loss(
+                aminoacid_logits,
+                aminoacid_labels,
+            )
+        else:
+            aminoacid_mlm_loss = None
+
+        # If both amino acid and codon losses are available, compute the
+        # total MLM loss for completeness.
+        if codon_mlm_loss is not None and aminoacid_mlm_loss is not None:
+            # Average the two losses to get the total MLM loss
+            mlm_loss = (codon_mlm_loss + aminoacid_mlm_loss) / 2.0
+
+        # If only codon loss is available, set the MLM loss to it
+        elif codon_mlm_loss is not None:
+            mlm_loss = codon_mlm_loss
+
+        # If only amino acid loss is available, set the MLM loss to it
+        elif aminoacid_mlm_loss is not None:
+            mlm_loss = aminoacid_mlm_loss
+
+        # If no losses are available, set the MLM loss to None
+        else:
+            mlm_loss = None
+
+        # Compute the total multi-modal loss (MLM loss + Contrastive loss)
+        # ================================================================
+        # If the contrastive loss is available, add it to the MLM loss
+        if contrastive_loss is not None and mlm_loss is not None:
+            total_loss = mlm_loss + contrastive_loss
+
+        # If only the contrastive loss is available, set the total loss to it
+        elif contrastive_loss is not None:
+            total_loss = contrastive_loss
+
+        # If only the MLM loss is available, set the total loss to it
+        elif mlm_loss is not None:
+            total_loss = mlm_loss
+
+        # If no losses are available, set the total loss to None
+        else:
+            total_loss = None
+
+        # Return the outputs
+        # ================================================================
+        # NOTE: Since the codon and amino acid heads have different vocab
+        # sizes, we need to compute and store the logits for each head
+        # separately.
+        return EsmCForContrastiveMaskedLMOutput(
+            loss=total_loss,
+            contrastive_loss=contrastive_loss,
+            mlm_loss=mlm_loss,
+            codon_mlm_loss=codon_mlm_loss,
+            aminoacid_mlm_loss=aminoacid_mlm_loss,
+            codon_logits=codon_logits,
+            aminoacid_logits=aminoacid_logits,
             hidden_states=outputs.hidden_states,
-            # attentions=outputs.attentions,
+            attentions=None,  # TODO: Add attentions
         )
 
 
