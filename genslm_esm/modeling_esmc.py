@@ -2,32 +2,43 @@
 
 # braceal 08/31/23: modified the original ESM Huggingface model to add a contrastive loss head.
 # braceal 01/20/24: modified the implementation to separate lm_head's for codons and amino acids.
-from mpi4py import MPI
-from typing import Optional, Tuple, Union
-from copy import deepcopy
-import torch
-import os
+from __future__ import annotations
+
+try:
+    from mpi4py import MPI
+
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    size = comm.Get_size()
+except (ImportError, RuntimeError):
+    comm, rank, size = None, None, None
+
 import json
-import torch.nn as nn
-import torch.nn.functional as F
+import os
+from copy import deepcopy
 from dataclasses import dataclass
-from transformers import logging, EsmTokenizer, PreTrainedModel, PretrainedConfig
-from transformers.models.esm.configuration_esm import EsmConfig
-from transformers.models.esm.modeling_esm import (
-    EsmPooler,
-    MaskedLMOutput,
-)
-from esm.models.esmc import ESMC
-from esm.pretrained import register_local_model, ESMC_300M_202412, ESMC_600M_202412
+from typing import Optional
+from typing import Union
+
+import torch
+import torch.nn.functional as F
 from esm.layers.regression_head import RegressionHead
+from esm.models.esmc import ESMC
+from esm.pretrained import ESMC_300M_202412
+from esm.pretrained import ESMC_600M_202412
+from esm.pretrained import register_local_model
+from torch import nn
+from transformers import EsmTokenizer
+from transformers import logging
+from transformers import PretrainedConfig
+from transformers import PreTrainedModel
+from transformers.models.esm.configuration_esm import EsmConfig
+from transformers.models.esm.modeling_esm import EsmPooler
+from transformers.models.esm.modeling_esm import MaskedLMOutput
 
 from genslm_esm.dataset import translation_table
 
 logger = logging.get_logger(__name__)
-
-comm = MPI.COMM_WORLD
-rank = comm.Get_rank()
-size = comm.Get_size()
 
 
 # TODO: Only used for a type hint
@@ -38,7 +49,7 @@ class ContrastiveEsmCConfig(PretrainedConfig):
     # ensure any string is utf-8
     def __init__(
         self,
-        model_name: str = "esmc_300m",
+        model_name: str = 'esmc_300m',
         base_model_path: str = None,
         d_model: int = 960,
         n_heads: int = 15,
@@ -48,15 +59,15 @@ class ContrastiveEsmCConfig(PretrainedConfig):
         compute_codon_loss: bool = False,
         compute_contrastive_loss: bool = False,
         contrastive_temperature: float = 0.1,
-        contrastive_pooler: str = "mean",
+        contrastive_pooler: str = 'mean',
         **kwargs,
     ):
         super().__init__(**kwargs)
         self.model_name = model_name
         self.base_model_path = base_model_path
-        self.d_model = d_model if "300M" in model_name else 1152
-        self.n_heads = n_heads if "300M" in model_name else 18
-        self.n_layers = n_layers if "300M" in model_name else 36
+        self.d_model = d_model if '300M' in model_name else 1152
+        self.n_heads = n_heads if '300M' in model_name else 18
+        self.n_layers = n_layers if '300M' in model_name else 36
         self.tokenizer_name_or_path = tokenizer_name_or_path
         self.compute_aminoacid_loss = compute_aminoacid_loss
         self.compute_codon_loss = compute_codon_loss
@@ -88,13 +99,18 @@ class ContrastiveLoss(nn.Module):
         # NOTE: z.shape == (batch_size, hidden_size)
         # TODO: Can we cache the pos_mask calculation with lru_cache?
         batch_size = z.shape[0]
-        z_all = [torch.empty_like(z) for _ in range(size)]
-        # gather all the tensors
-        torch.distributed.all_gather(z_all, z)
-        # replace local rank information so gradients propagate
-        z_all[rank] = z
-        # concatenate all the tensors on batch dimension
-        z = torch.cat(z_all, dim=0)
+
+        # If we are using distributed training, gather all the tensors
+        # across all processes and concatenate them on the batch dimension.
+        if size is not None and rank is not None:
+            z_all = [torch.empty_like(z) for _ in range(size)]
+            # gather all the tensors
+            torch.distributed.all_gather(z_all, z)
+            # replace local rank information so gradients propagate
+            z_all[rank] = z
+            # concatenate all the tensors on batch dimension
+            z = torch.cat(z_all, dim=0)
+
         # Calculate cosine similarity
         cos_sim = F.cosine_similarity(z[:, None, :], z[None, :, :], dim=-1)
         # Mask out cosine similarity to itself
@@ -111,7 +127,8 @@ class ContrastiveLoss(nn.Module):
 
 class MeanPooler(nn.Module):
     """Reduces the sequence embeddings (batch_size, seq_length, hidden_size)
-    to a single embedding (batch_size, hidden_size) by averaging."""
+    to a single embedding (batch_size, hidden_size) by averaging.
+    """
 
     def __init__(self, config) -> None:
         super().__init__()
@@ -123,10 +140,11 @@ class MeanPooler(nn.Module):
 
 class FirstPooler(EsmPooler):
     """Reduces the sequence embeddings (batch_size, seq_length, hidden_size)
-    to a single embedding (batch_size, hidden_size) by taking the first hidden state."""
+    to a single embedding (batch_size, hidden_size) by taking the first hidden state.
+    """
 
 
-POOLER_DISPATCH = {"mean": MeanPooler, "first": FirstPooler}
+POOLER_DISPATCH = {'mean': MeanPooler, 'first': FirstPooler}
 
 
 class EsmContrastiveProjectionHead(nn.Module):
@@ -148,7 +166,9 @@ class EsmContrastiveProjectionHead(nn.Module):
             nn.Linear(config.d_model // 2, config.d_model // 4),
         )
 
-        self.loss_fn = ContrastiveLoss(temperature=config.contrastive_temperature)
+        self.loss_fn = ContrastiveLoss(
+            temperature=config.contrastive_temperature,
+        )
         self.pooler = POOLER_DISPATCH[config.contrastive_pooler](config)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -188,14 +208,14 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
         self.set_config(config)
         if rank == 0:
             print(config)
-        if "300m" in str(config.model_name.lower()):
+        if '300m' in str(config.model_name.lower()):
             model_builder = ESMC_300M_202412
-        elif "600m" in str(config.model_name.lower()):
+        elif '600m' in str(config.model_name.lower()):
             model_builder = ESMC_600M_202412
             config.d_model = 1152  # not set correctly in the 600m case
         else:
             raise ValueError(
-                "Model name must contain '300m' or '600m' referring to the ESMC model size"
+                "Model name must contain '300m' or '600m' referring to the ESMC model size",
             )
         register_local_model(config.base_model_path, model_builder)
         self.transformer = ESMC.from_pretrained(config.base_model_path)
@@ -205,7 +225,7 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
 
         try:
             self.transformer.tokenizer = EsmTokenizer.from_pretrained(
-                config.tokenizer_name_or_path
+                config.tokenizer_name_or_path,
             )
         except:
             # TODO: Should we though? Maybe raise errors if the wrong tokenizer is about to be used?
@@ -217,15 +237,15 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
         # not done, then it will default to the settings passed in the init.
         # Note: the saved checkpoint configs contain these settings, but the
         # original ESM configs do not.
-        if not hasattr(config, "compute_aminoacid_loss"):
+        if not hasattr(config, 'compute_aminoacid_loss'):
             config.compute_aminoacid_loss = compute_aminoacid_loss
-        if not hasattr(config, "compute_codon_loss"):
+        if not hasattr(config, 'compute_codon_loss'):
             config.compute_codon_loss = compute_codon_loss
-        if not hasattr(config, "compute_contrastive_loss"):
+        if not hasattr(config, 'compute_contrastive_loss'):
             config.compute_contrastive_loss = compute_contrastive_loss
-        if not hasattr(config, "contrastive_temperature"):
+        if not hasattr(config, 'contrastive_temperature'):
             config.contrastive_temperature = contrastive_temperature
-        if not hasattr(config, "contrastive_pooler"):
+        if not hasattr(config, 'contrastive_pooler'):
             config.contrastive_pooler = contrastive_pooler
 
         # Only used if compute_contrastive_loss is True
@@ -236,7 +256,7 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
         # (the number of codons 64 + special tokens)
 
         codon_config = EsmConfig(**config.to_dict())
-        print(f"{config.to_dict()=}")
+        print(f'{config.to_dict()=}')
         codon_config.vocab_size = 69
         self.add_codon_lm_head(codon_config)
 
@@ -249,7 +269,9 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
         amino_config.vocab_size = 33
         self.add_aminoacid_lm_head(amino_config)
         # base tokenizer has vocab of 102? in ESMC; includes only peptides and some special tokens though
-        self.config.vocab_size = codon_config.vocab_size + amino_config.vocab_size
+        self.config.vocab_size = (
+            codon_config.vocab_size + amino_config.vocab_size
+        )
         # These are the entries in vocab we *really* dont want to change
         self.config.amino_vocab_size = amino_config.vocab_size
         # Initialize weights and apply final processing
@@ -267,19 +289,23 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
 
     def save_pretrained(self, save_directory: str, *args, **kwargs) -> None:
         is_main_process = True
-        if "is_main_process" in kwargs:
-            is_main_process = kwargs.pop("is_main_process")
+        if 'is_main_process' in kwargs:
+            is_main_process = kwargs.pop('is_main_process')
         if is_main_process:
             # TODO: Clip off file paths and such; everything should be contained in the save directory
             if not os.path.exists(save_directory):
                 os.makedirs(save_directory, exist_ok=True)
-            with open(os.path.join(save_directory, "config.json"), "w") as f:
+            with open(os.path.join(save_directory, 'config.json'), 'w') as f:
                 json.dump(self.get_config(), f)
             # write model with safetensors
-            torch.save(self.state_dict(), os.path.join(save_directory, "model.pt"))
+            torch.save(
+                self.state_dict(),
+                os.path.join(save_directory, 'model.pt'),
+            )
             # write compatible for huggingface; annoyed
             torch.save(
-                self.state_dict(), os.path.join(save_directory, "pytorch_model.bin")
+                self.state_dict(),
+                os.path.join(save_directory, 'pytorch_model.bin'),
             )
             # override save_pretrained to make sure we save the tokenizer also
             self.transformer.tokenizer.save_pretrained(save_directory)
@@ -287,8 +313,8 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
     @classmethod
     def from_pretrained(self, model_name_or_path: str, *model_args, **kwargs):
         # Load the model from the base class
-        config_file = os.path.join(model_name_or_path, "config.json")
-        with open(config_file, "r") as f:
+        config_file = os.path.join(model_name_or_path, 'config.json')
+        with open(config_file) as f:
             config_dict = json.load(f)
         config = ContrastiveEsmCConfig(**config_dict)
 
@@ -299,14 +325,16 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
         # TODO: this should use the tokenizer in the pretrained model directory which is being loaded
         model.update_model_weights(model.transformer.tokenizer)
         # load via safetensors
-        load_path = os.path.join(model_name_or_path, "model.pt")
+        load_path = os.path.join(model_name_or_path, 'model.pt')
         if not os.path.exists(load_path):
-            load_path = os.path.join(model_name_or_path, "pytorch_model.bin")
-        state_dict = torch.load(os.path.join(model_name_or_path, "model.pt"))
+            load_path = os.path.join(model_name_or_path, 'pytorch_model.bin')
+        state_dict = torch.load(os.path.join(model_name_or_path, 'model.pt'))
         model.load_state_dict(state_dict)
         # Load the tokenizer
         # TODO: this should already be loaded in the model
-        model.transformer.tokenizer = EsmTokenizer.from_pretrained(model_name_or_path)
+        model.transformer.tokenizer = EsmTokenizer.from_pretrained(
+            model_name_or_path,
+        )
         return model
 
     def set_config(self, config: ContrastiveEsmCConfig):
@@ -318,15 +346,21 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
         return self.config_file.to_dict()
 
     def add_contrastive_loss_head(self, config: ContrastiveEsmCConfig):
-        self.transformer.contrastive_head = EsmContrastiveProjectionHead(config)
+        self.transformer.contrastive_head = EsmContrastiveProjectionHead(
+            config,
+        )
 
     def add_codon_lm_head(self, config: EsmConfig):
         self.transformer.codon_lm_head = RegressionHead(
-            config.d_model, config.vocab_size
+            config.d_model,
+            config.vocab_size,
         )
 
     def add_aminoacid_lm_head(self, config: EsmConfig):
-        self.transformer.lm_head = RegressionHead(config.d_model, config.vocab_size)
+        self.transformer.lm_head = RegressionHead(
+            config.d_model,
+            config.vocab_size,
+        )
 
     def get_output_embeddings(self):
         # We override weight tieing since the new token embedding matrix
@@ -349,9 +383,7 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
             return
 
         logger.warning(
-            "Resizing token embedding layer from {} to {} and initializing codon_lm_head with amino acid lm_head".format(
-                self.config.vocab_size, new_vocab_size
-            )
+            f'Resizing token embedding layer from {self.config.vocab_size} to {new_vocab_size} and initializing codon_lm_head with amino acid lm_head',
         )
 
         # Get the original token embedding matrix (TEM)
@@ -377,17 +409,21 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
         for codon, codon_id in tokenizer.get_vocab().items():
             # Note: the translation table maps stop codons to "" and the get
             # function maps the special tokens and amino acids to "" as well.
-            aminoacid = translation_table.get(codon, "")
+            aminoacid = translation_table.get(codon, '')
             if aminoacid:
                 aminoacid_id = tokenizer._token_to_id[aminoacid]
                 # The new TEM matrix aminoacid represenations are the same
                 # as the original TEM (they are preserved during resizing)
                 new_tem[codon_id] = new_tem[aminoacid_id].clone()
-                assert torch.equal(original_tem[aminoacid_id], new_tem[codon_id])
+                assert torch.equal(
+                    original_tem[aminoacid_id],
+                    new_tem[codon_id],
+                )
 
         # Check that the TEM matrix was updated correctly
         assert torch.equal(
-            original_tem[:orig_aa_vocab_size], new_tem[:orig_aa_vocab_size]
+            original_tem[:orig_aa_vocab_size],
+            new_tem[:orig_aa_vocab_size],
         )
         assert torch.equal(self.transformer.embed.weight, new_tem)
 
@@ -397,37 +433,53 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
         # Resizing vocab changes the original aminoacid lm_head, we want to
         # change it back since we have a separate lm_head for the codon vocabulary.
         ## New resize actually didnt change the AA head because I'm lazy 12-2024 AIW
-        self.lm_head = deepcopy(original_lm_head).to(original_lm_head[0].weight.device)
+        self.lm_head = deepcopy(original_lm_head).to(
+            original_lm_head[0].weight.device,
+        )
         copied_params = dict(self.lm_head.named_parameters())
         # Check that the original amino acid lm_head was reloaded correctly
         for n, p in original_lm_head.named_parameters():
-            assert torch.equal(p, copied_params[n]), f"{n=} was not copied correctly"
+            assert torch.equal(
+                p, copied_params[n]
+            ), f'{n=} was not copied correctly'
 
         # We initialize the codon_lm_head dense and layer_norm layers
         # with the vocab-size invariant amino acid counterparts
         self.transformer.codon_lm_head[0].weight.data = self.lm_head[
             0
         ].weight.data.clone()
-        self.transformer.codon_lm_head[0].bias.data = self.lm_head[0].bias.data.clone()
+        self.transformer.codon_lm_head[0].bias.data = self.lm_head[
+            0
+        ].bias.data.clone()
         self.transformer.codon_lm_head[2].weight.data = self.lm_head[
             2
         ].weight.data.clone()
-        self.transformer.codon_lm_head[2].bias.data = self.lm_head[2].bias.data.clone()
+        self.transformer.codon_lm_head[2].bias.data = self.lm_head[
+            2
+        ].bias.data.clone()
 
         # Check that the weights have been updated properly
         assert torch.equal(
-            self.transformer.codon_lm_head[0].weight, self.lm_head[0].weight
+            self.transformer.codon_lm_head[0].weight,
+            self.lm_head[0].weight,
         )
-        assert torch.equal(self.transformer.codon_lm_head[0].bias, self.lm_head[0].bias)
         assert torch.equal(
-            self.transformer.codon_lm_head[2].weight, self.lm_head[2].weight
+            self.transformer.codon_lm_head[0].bias,
+            self.lm_head[0].bias,
         )
-        assert torch.equal(self.transformer.codon_lm_head[2].bias, self.lm_head[2].bias)
+        assert torch.equal(
+            self.transformer.codon_lm_head[2].weight,
+            self.lm_head[2].weight,
+        )
+        assert torch.equal(
+            self.transformer.codon_lm_head[2].bias,
+            self.lm_head[2].bias,
+        )
         assert id(self.transformer.codon_lm_head[0].weight) != id(
-            self.lm_head[0].weight
+            self.lm_head[0].weight,
         )
         assert id(self.transformer.codon_lm_head[2].weight) != id(
-            self.lm_head[2].weight
+            self.lm_head[2].weight,
         )
 
         # Get the original aminoacid lm_head decoder weights
@@ -454,8 +506,10 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
         # print(f"aminoacid_bias shape: {aminoacid_bias.shape}")
         print(aminoacid_decoder)
         print(codon_decoder)
-        for codon_idx, codon in enumerate(tokenizer.added_tokens_decoder.values()):
-            aminoacid = translation_table.get(str(codon), "")
+        for codon_idx, codon in enumerate(
+            tokenizer.added_tokens_decoder.values(),
+        ):
+            aminoacid = translation_table.get(str(codon), '')
             # The codon could be a special token (<cls>, <pad>, <eos>, <unk>, <mask>)
             if aminoacid or codon.special:
                 # Get the id of the aminoacid/special token corresponding to the current codon
@@ -463,7 +517,9 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
                     str(codon) if codon.special else aminoacid
                 ]
                 # Update the codon_decoder/bias with the corresponding aminoacid weights
-                codon_decoder[codon_idx] = aminoacid_decoder[aminoacid_id].clone()
+                codon_decoder[codon_idx] = aminoacid_decoder[
+                    aminoacid_id
+                ].clone()
                 codon_bias[codon_idx] = aminoacid_bias[aminoacid_id].clone()
                 codon_decoder.to(aminoacid_decoder.device)
                 codon_bias.to(aminoacid_bias.device)
@@ -473,12 +529,17 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
                     aminoacid_decoder[aminoacid_id].cpu(),
                 )
                 assert torch.equal(
-                    codon_bias[codon_idx].cpu(), aminoacid_bias[aminoacid_id].cpu()
+                    codon_bias[codon_idx].cpu(),
+                    aminoacid_bias[aminoacid_id].cpu(),
                 )
                 assert torch.equal(
-                    codon_decoder, self.transformer.codon_lm_head[3].weight
+                    codon_decoder,
+                    self.transformer.codon_lm_head[3].weight,
                 )
-                assert torch.equal(codon_bias, self.transformer.codon_lm_head[3].bias)
+                assert torch.equal(
+                    codon_bias,
+                    self.transformer.codon_lm_head[3].bias,
+                )
 
     # have to make sure everything is on the same device and type
     def validate_dtype(self):
@@ -494,7 +555,10 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
 
     def resize_token_embeddings(self, new_num_tokens: int):
         old_embeddings = self.get_input_embeddings()
-        new_embeddings = self._get_resized_embeddings(old_embeddings, new_num_tokens)
+        new_embeddings = self._get_resized_embeddings(
+            old_embeddings,
+            new_num_tokens,
+        )
         self.set_input_embeddings(new_embeddings)
 
         # Update the lm_head if it exists
@@ -507,7 +571,9 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
         return self.get_input_embeddings()
 
     def _get_resized_embeddings(
-        self, old_embeddings: nn.Embedding, new_num_tokens: int
+        self,
+        old_embeddings: nn.Embedding,
+        new_num_tokens: int,
     ) -> nn.Embedding:
         old_num_tokens, old_embedding_dim = old_embeddings.weight.size()
         new_embeddings = nn.Embedding(new_num_tokens, old_embedding_dim)
@@ -515,14 +581,19 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
 
         # Copy the weights from the old embeddings to the new embeddings
         num_tokens_to_copy = min(old_num_tokens, new_num_tokens)
-        new_embeddings.weight.data[:num_tokens_to_copy, :] = old_embeddings.weight.data[
+        new_embeddings.weight.data[
             :num_tokens_to_copy, :
+        ] = old_embeddings.weight.data[
+            :num_tokens_to_copy,
+            :,
         ]
 
         return new_embeddings
 
     def _get_resized_lm_head(
-        self, old_lm_head: nn.Linear, new_num_tokens: int
+        self,
+        old_lm_head: nn.Linear,
+        new_num_tokens: int,
     ) -> nn.Linear:
         old_num_tokens, old_hidden_dim = old_lm_head.weight.size()
         new_lm_head = nn.Linear(old_hidden_dim, new_num_tokens, bias=False)
@@ -530,8 +601,11 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
 
         # Copy the weights from the old lm_head to the new lm_head
         num_tokens_to_copy = min(old_num_tokens, new_num_tokens)
-        new_lm_head.weight.data[:num_tokens_to_copy, :] = old_lm_head.weight.data[
+        new_lm_head.weight.data[
             :num_tokens_to_copy, :
+        ] = old_lm_head.weight.data[
+            :num_tokens_to_copy,
+            :,
         ]
 
         return new_lm_head
@@ -554,9 +628,9 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
         return_dict: Optional[bool] = None,
         decode_aminoacid_head: bool = False,
         decode_codon_head: bool = False,
-    ) -> Union[Tuple, MaskedLMOutput]:
+    ) -> Union[tuple, MaskedLMOutput]:
         r"""
-        labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
+        Labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
             Labels for computing the masked language modeling loss. Indices should be in `[-100, 0, ...,
             config.vocab_size]` (see `input_ids` docstring) Tokens with indices set to `-100` are ignored (masked), the
             loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`
@@ -568,7 +642,9 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
             Whether to use the codon head for prediction, regardless of config settings.
         """
         return_dict = (
-            return_dict if return_dict is not None else self.config.use_return_dict
+            return_dict
+            if return_dict is not None
+            else self.config.use_return_dict
         )
 
         # Note: We needed to pass the codon input_ids and attention_mask separately
@@ -582,7 +658,10 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
         if input_ids is not None and codon_input_ids is not None:
             input_ids = torch.cat([codon_input_ids, input_ids], dim=0)
         if attention_mask is not None and codon_attention_mask is not None:
-            attention_mask = torch.cat([codon_attention_mask, attention_mask], dim=0)
+            attention_mask = torch.cat(
+                [codon_attention_mask, attention_mask],
+                dim=0,
+            )
 
         # Note: During inference we can pass either the amino acid or codon sequences
         # but not both. If we pass both, then the model will try to stack the amino acid
@@ -628,7 +707,9 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
             half_batch_size = sequence_output.shape[0] // 2
             codon_embed = sequence_output[:half_batch_size]
             amino_embed = sequence_output[half_batch_size:]
-            codon_prediction_scores = self.transformer.codon_lm_head(codon_embed)
+            codon_prediction_scores = self.transformer.codon_lm_head(
+                codon_embed,
+            )
             amino_prediction_scores = self.lm_head(amino_embed)
             # The prediction scores have different vocab sizes, so we can't concatenate them.
             # Instead, we return the aminoacid scores (during inference, set either
@@ -640,7 +721,7 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
             prediction_scores = self.transformer.codon_lm_head(sequence_output)
         else:
             raise ValueError(
-                "Either compute_aminoacid_loss or compute_codon_loss must be True, or use_aminoacid_head or use_codon_head must be True"
+                'Either compute_aminoacid_loss or compute_codon_loss must be True, or use_aminoacid_head or use_codon_head must be True',
             )
 
         masked_lm_loss = None
@@ -648,7 +729,10 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
             loss_fct = nn.CrossEntropyLoss()
 
             # Compute the masked language modeling loss for each head
-            if self.config.compute_aminoacid_loss and self.config.compute_codon_loss:
+            if (
+                self.config.compute_aminoacid_loss
+                and self.config.compute_codon_loss
+            ):
                 # Split the labels into codon and amino acid labels
                 # These have shape (batch_size // 2, seq_length)
                 # half_batch_size = labels.shape[0] // 2
@@ -657,15 +741,23 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
 
                 # Compute the masked language modeling loss for each head
                 aminoacid_masked_lm_loss = loss_fct(
-                    amino_prediction_scores.view(-1, amino_prediction_scores.shape[-1]),
+                    amino_prediction_scores.view(
+                        -1,
+                        amino_prediction_scores.shape[-1],
+                    ),
                     labels.view(-1),  # The labels store the amino acid labels
                 )
                 codon_masked_lm_loss = loss_fct(
-                    codon_prediction_scores.view(-1, codon_prediction_scores.shape[-1]),
+                    codon_prediction_scores.view(
+                        -1,
+                        codon_prediction_scores.shape[-1],
+                    ),
                     codon_labels.view(-1),
                 )
                 # Add the two losses together
-                masked_lm_loss = (codon_masked_lm_loss + aminoacid_masked_lm_loss) / 2.0
+                masked_lm_loss = (
+                    codon_masked_lm_loss + aminoacid_masked_lm_loss
+                ) / 2.0
 
             else:
                 # # (-1, vocab_size) is the shape of the prediction scores
@@ -678,12 +770,16 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
         # Everything else in this function is the same as the base class implementation.
         if labels is not None and self.config.compute_contrastive_loss:
             # Compute the contrastive loss following SimCLR and add it to the masked language modeling loss
-            masked_lm_loss += self.transformer.contrastive_head(sequence_output)
+            masked_lm_loss += self.transformer.contrastive_head(
+                sequence_output,
+            )
 
         if not return_dict:
             output = (prediction_scores,) + outputs[2:]
             return (
-                ((masked_lm_loss,) + output) if masked_lm_loss is not None else output
+                ((masked_lm_loss,) + output)
+                if masked_lm_loss is not None
+                else output
             )
 
         return MaskedLMOutput(
@@ -694,15 +790,14 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
         )
 
 
-if __name__ == "__main__":
-    from esm.pretrained import register_local_model, ESMC_300M_202412
+if __name__ == '__main__':
     from dataset import GenSLMColatorForLanguageModeling
+    from esm.pretrained import ESMC_300M_202412
+    from esm.pretrained import register_local_model
 
-    model_path = "/lus/eagle/projects/FoundEpidem/azton/esmc_models/esmc_300m"
-    model_name = "ESMC_300M"
-    tokenizer_path = (
-        "/lus/eagle/projects/CVD-Mol-AI/braceal/src/genslm-esm/tokenizer_esm_genslm"
-    )
+    model_path = '/lus/eagle/projects/FoundEpidem/azton/esmc_models/esmc_300m'
+    model_name = 'ESMC_300M'
+    tokenizer_path = '/lus/eagle/projects/CVD-Mol-AI/braceal/src/genslm-esm/tokenizer_esm_genslm'
 
     config = ContrastiveEsmCConfig(
         model_name=model_name,
@@ -717,12 +812,12 @@ if __name__ == "__main__":
     print(model)
     model.update_model_weights(model.transformer.tokenizer)
     model.save_pretrained(
-        "./TestESMCSave_AA",
+        './TestESMCSave_AA',
     )
 
     model = None
-    model = EsmCForContrastiveMaskedLM.from_pretrained("./TestESMCSave_AA")
-    print("Reloaded model:")
+    model = EsmCForContrastiveMaskedLM.from_pretrained('./TestESMCSave_AA')
+    print('Reloaded model:')
     print(model)
 
     collator = GenSLMColatorForLanguageModeling(
@@ -735,12 +830,12 @@ if __name__ == "__main__":
     )
     test_input = [
         {
-            "aminoacid": "MKVLPQETVRIG",  # 12 residues
-            "codon": "ATGAAGGTACTACCACAAGAAACTGTAAGAATTGGA",  # 36 nucleotides
+            'aminoacid': 'MKVLPQETVRIG',  # 12 residues
+            'codon': 'ATGAAGGTACTACCACAAGAAACTGTAAGAATTGGA',  # 36 nucleotides
         },
         {
-            "aminoacid": "MDKTHIRLSVDNPFAKL",  # 16 residues
-            "codon": "ATGGACAAAACACATATTCGACTATCTGTTGACAATCCATTTGCAAAACTA",  # 48 nucleotides
+            'aminoacid': 'MDKTHIRLSVDNPFAKL',  # 16 residues
+            'codon': 'ATGGACAAAACACATATTCGACTATCTGTTGACAATCCATTTGCAAAACTA',  # 48 nucleotides
         },
     ]
     test_input = collator(test_input)
