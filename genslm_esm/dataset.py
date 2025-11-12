@@ -648,6 +648,10 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
 
         # We only need to mask tokens if we are training
         if not self.train_mode:
+            # Need to manually set the labels so that torch_call can adjust
+            # the label range to [0, 69) for the codon vocabulary, and so that
+            # losses are computed for the codon and amino acid heads.
+            batch['labels'] = batch['input_ids']
             return batch
 
         if self.mlm:
