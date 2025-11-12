@@ -1496,6 +1496,7 @@ def compare_to_original() -> None:
     from transformers import EsmTokenizer
 
     from genslm_esm.dataset import FastaDataset
+    from genslm_esm.dataset import GenSLMColatorForLanguageModeling
     from genslm_esm.modeling_esmc import (
         EsmCForContrastiveMaskedLM as OriginalModel,
     )
