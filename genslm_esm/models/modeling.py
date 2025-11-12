@@ -14,7 +14,6 @@ import torch.nn.functional as F
 from einops import rearrange
 from einops import repeat
 from torch import nn
-from transformers import logging
 from transformers import PreTrainedModel
 from transformers.data.data_collator import DataCollatorForLanguageModeling
 from transformers.modeling_outputs import ModelOutput
@@ -46,10 +45,7 @@ except (ImportError, RuntimeError):
     comm, rank, size = None, None, None
 
 
-# from esm.utils.constants.models import ESMC_600M
 from genslm_esm.models.configuration import ContrastiveEsmCConfig
-
-logger = logging.get_logger(__name__)
 
 # ESMC pad token id
 ESMC_PAD_TOKEN_ID = 1
