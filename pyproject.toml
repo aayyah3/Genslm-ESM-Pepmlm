@@ -17,28 +17,16 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 dependencies = [
-    "accelerate",
     "torch",
     "einops",
-    "datasets",
-    "sentencepiece",
     "transformers<4.51",
-    "protobuf",
-    "evaluate",
-    "scikit-learn",
-    "h5py",
-    "wandb",
     "biopython",
-    "typer",
 ]
 
 [project.urls]
 homepage = "https://github.com/ramanathanlab/genslm-esm"
 documentation = "https://github.com/ramanathanlab/genslm-esm"
 repository = "https://github.com/ramanathanlab/genslm-esm"
-
-[project.scripts]
-genslm-esm = "genslm_esm.cli:main"
 
 [project.optional-dependencies]
 dev = [
@@ -142,7 +130,7 @@ select = [
     "RUF",
 ]
 line-length = 79
-extend-ignore = ["Q001"]
+extend-ignore = ["Q001", "RUF100"]
 target-version = "py38"
 
 [tool.ruff.flake8-pytest-style]
@@ -164,10 +152,10 @@ required-imports = ["from __future__ import annotations"]
 
 [tool.ruff.per-file-ignores]
 "*/__init__.py" = ["F401"]
-"*/*_test.py" = ["D10"]
+"**/test_*.py" = ["D10"]
 
 [tool.ruff.lint.pylint]
-max-args = 7
+max-args = 8
 
 [tool.ruff.pydocstyle]
 convention = "numpy"

@@ -1,0 +1,12 @@
+num_train_epochs: 20
+compute_codon_loss: true
+compute_aminoacid_loss: false
+compute_contrastive_loss: false
+contrastive_temperature: 0.1
+contrastive_pooler: mean
+base_model: facebook/esm2_t6_8M_UR50D
+tokenizer_path: tokenizer_esm_genslm
+output_path: production_runs/codon_8m
+train_path: data/mdh/train.fasta
+validation_path: data/mdh/valid.fasta
+wandb_project: genslm-esm
