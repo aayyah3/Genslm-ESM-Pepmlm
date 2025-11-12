@@ -5,6 +5,7 @@ from __future__ import annotations
 import functools
 import math
 from dataclasses import dataclass
+from typing import Any
 from typing import cast
 
 import einops
@@ -15,7 +16,9 @@ from einops import repeat
 from torch import nn
 from transformers import logging
 from transformers import PreTrainedModel
+from transformers.data.data_collator import DataCollatorForLanguageModeling
 from transformers.modeling_outputs import ModelOutput
+from transformers.tokenization_utils_base import BatchEncoding
 
 try:
     from flash_attn import flash_attn_varlen_qkvpacked_func  # type: ignore
@@ -758,9 +761,9 @@ class ESMC(nn.Module):
 
         # If sequence_id looks like a mask.
         if self._use_flash_attn:
-            assert sequence_id.dtype == torch.bool, (
-                'sequence_id must be a boolean mask if Flash Attention is used'
-            )
+            assert (
+                sequence_id.dtype == torch.bool
+            ), 'sequence_id must be a boolean mask if Flash Attention is used'
             assert sequence_id.shape == (B, L)
             assert unpad_input is not None
             x, indices, *_ = unpad_input(  # type: ignore
@@ -1254,12 +1257,229 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
         )
 
 
+class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
+    """Collate sequences for language modeling.
+
+    Augment the underlying DataCollatorForLanguageModeling to handle
+    multiple batch encoding inputs.
+    """
+
+    def __init__(
+        self,
+        return_codon: bool = True,
+        return_aminoacid: bool = False,
+        train_mode: bool = False,
+        max_length: int = 2048,
+        **kwargs: Any,
+    ) -> None:
+        """Collate sequences for language modeling.
+
+        Augment the underlying DataCollatorForLanguageModeling to handle
+        multiple batch encoding inputs.
+        """
+        self.return_codon = return_codon
+        self.return_aminoacid = return_aminoacid
+        self.train_mode = train_mode
+        self.max_length = max_length
+        super().__init__(**kwargs)
+
+    def tokenize(self, sequences: list[str]) -> BatchEncoding:
+        """Tokenize a list of sequences."""
+        return self.tokenizer(
+            sequences,
+            return_tensors='pt',
+            truncation=True,
+            padding='max_length',
+            max_length=self.max_length,
+            return_special_tokens_mask=self.train_mode and self.mlm,
+        )
+
+    def torch_call_helper(
+        self,
+        sequences: list[str],
+        low: int = 0,
+        high: int | None = None,
+    ) -> BatchEncoding:
+        """Tokenize a list of sequences and mask tokens if we are training."""
+        # First, tokenize the batch
+        batch = self.tokenize(sequences)
+
+        # We only need to mask tokens if we are training
+        if not self.train_mode:
+            return batch
+
+        if self.mlm:
+            # If special token mask has been preprocessed, pop it from the
+            # dict.
+            batch['input_ids'], batch['labels'] = self.torch_mask_tokens(
+                batch['input_ids'],
+                special_tokens_mask=batch.pop('special_tokens_mask', None),
+                low=low,
+                high=high,
+            )
+        else:
+            # TODO: This region of the code is not used for our BERT models
+            # please test this if you want to use it.
+            labels = batch['input_ids'].clone()
+            if self.tokenizer.pad_token_id is not None:
+                labels[labels == self.tokenizer.pad_token_id] = -100
+            batch['labels'] = labels
+        return batch
+
+    def torch_call(self, examples: list[dict[str, str]]) -> BatchEncoding:
+        """Collate a list of sequences for language modeling."""
+        if self.return_codon:
+            # Set the low parameter to 33 to sample random noise from the
+            # codon vocabulary and not the amino acid vocabulary
+            codon_batch = self.torch_call_helper(
+                [e['codon'] for e in examples],
+                low=33,
+            )
+            # We first need to realign the codon labels onto the output label
+            # range [0, 69). We do this by subtracting 28 from the codon
+            # labels since the codon labels start with the mask token at
+            # '<mask>': 32, and we also need to account for the special tokens
+            # '<cls>': 0, '<pad>': 1, '<eos>': 2, '<unk>': 3, which are
+            # included in the codon vocabulary.
+            # Note: labels are only present during training, not inference.
+            if 'labels' in codon_batch:
+                mask = codon_batch['labels'] > 32  # noqa: PLR2004
+                codon_batch['labels'][mask] -= 28
+
+        if self.return_aminoacid:
+            # Set the high parameter to 25 to sample random noise from the
+            # amino acid vocabulary and not the codon vocabulary (there are a
+            # tokens in the amino acid vocabulary that we want to avoid
+            # sampling from) 'B': 25, 'U': 26, 'Z': 27, 'O': 28, '.': 29,
+            # '-': 30, '<null_1>': 31, '<mask>': 32,
+            # Note: we also avoid sampling the special tokens '<cls>': 0,
+            # '<pad>': 1, '<eos>': 2, '<unk>': 3,
+            amino_batch = self.torch_call_helper(
+                [e['aminoacid'] for e in examples],
+                low=4,
+                high=24,
+            )
+
+        if self.return_codon and self.return_aminoacid:
+            # Then we need to add an extra pad token to the amino acid
+            # input_ids, labels, and attention_mask to account for the stop
+            # codon
+            batch_size, seq_len = codon_batch['input_ids'].shape
+            pad_size = seq_len - amino_batch['input_ids'].shape[1]
+            pad = torch.ones((batch_size, pad_size), dtype=torch.long)
+            amino_batch['input_ids'] = torch.cat(
+                [amino_batch['input_ids'], pad],
+                dim=1,
+            )
+            amino_batch['labels'] = torch.cat(
+                [amino_batch['labels'], pad * -100],
+                dim=1,
+            )
+            amino_batch['attention_mask'] = torch.cat(
+                [amino_batch['attention_mask'], pad * 0],
+                dim=1,
+            )
+
+            # We have to put the amino acid and codon sequences into separate
+            # fields in the BatchEncoding object because, otherwise the order
+            # gets shuffled in the hugging face distributed sampler.
+            return BatchEncoding(
+                {
+                    # The amino acids are passed through the standard variables
+                    'input_ids': amino_batch['input_ids'],
+                    'attention_mask': amino_batch['attention_mask'],
+                    'labels': amino_batch['labels'],
+                    'codon_input_ids': codon_batch['input_ids'],
+                    'codon_attention_mask': codon_batch['attention_mask'],
+                    'codon_labels': codon_batch['labels'],
+                },
+            )
+
+        elif self.return_codon:
+            return codon_batch
+        elif self.return_aminoacid:
+            return amino_batch
+
+        raise ValueError(
+            'Either return_codon or return_aminoacid must be True.',
+        )
+
+    def torch_mask_tokens(
+        self,
+        inputs: Any,
+        special_tokens_mask: Any | None = None,
+        low: int = 0,  # Custom parameter
+        high: int | None = None,  # Custom parameter
+    ) -> tuple[Any, Any]:
+        """Prepare masked tokens inputs/labels for masked language modeling.
+
+        Prepare masked tokens inputs/labels for masked language modeling:
+        80% MASK, 10% random, 10% original.
+        """
+        labels = inputs.clone()
+        # We sample a few tokens in each sequence for MLM training
+        # (with probability `self.mlm_probability`)
+        probability_matrix = torch.full(labels.shape, self.mlm_probability)
+        if special_tokens_mask is None:
+            special_tokens_mask = [
+                self.tokenizer.get_special_tokens_mask(
+                    val,
+                    already_has_special_tokens=True,
+                )
+                for val in labels.tolist()
+            ]
+            special_tokens_mask = torch.tensor(
+                special_tokens_mask,
+                dtype=torch.bool,
+            )
+        else:
+            special_tokens_mask = special_tokens_mask.bool()
+
+        probability_matrix.masked_fill_(special_tokens_mask, value=0.0)
+        masked_indices = torch.bernoulli(probability_matrix).bool()
+        labels[~masked_indices] = -100  # We only compute loss on masked tokens
+
+        # 80% of the time, we replace masked input tokens with
+        # tokenizer.mask_token ([MASK])
+        indices_replaced = (
+            torch.bernoulli(torch.full(labels.shape, 0.8)).bool()
+            & masked_indices
+        )
+        inputs[indices_replaced] = self.tokenizer.convert_tokens_to_ids(
+            self.tokenizer.mask_token,
+        )
+
+        # 10% of the time, we replace masked input tokens with random word
+        indices_random = (
+            torch.bernoulli(torch.full(labels.shape, 0.5)).bool()
+            & masked_indices
+            & ~indices_replaced
+        )
+        # Custom edit: By default, the random words are sampled from the entire
+        # vocabulary. We want to sample from the same vocabulary as the input
+        # sequences (i.e. the codon sequences or aminoacid sequences, but not
+        # both). This is important because the amino acid and codon sequences
+        # are not in the same vocabulary. This is done by passing the
+        # vocab_size argument to torch.randint
+        random_words = torch.randint(
+            low=low,
+            high=len(self.tokenizer) if high is None else high,
+            size=labels.shape,
+            dtype=torch.long,
+        )
+        inputs[indices_random] = random_words[indices_random]
+
+        # The rest of the time (10% of the time) we keep the masked input
+        # tokens unchanged
+        return inputs, labels
+
+
 if __name__ == '__main__':
     from torch.utils.data import DataLoader
     from transformers import EsmTokenizer
 
     from genslm_esm.dataset import FastaDataset
-    from genslm_esm.dataset import GenSLMColatorForLanguageModeling
+    from genslm_esm.dataset import group_codons
 
     model_path = '/nfs/lambda_stor_01/homes/abrace/projects/genslm/src/genslm-tutorial-05-2025/model/checkpoint-203847'
 
@@ -1294,6 +1514,19 @@ if __name__ == '__main__':
         'ATGAAGGTACTACCACAAGAAACTGTAAGAATTGGA',
         'ATGGACAAAACACATATTCGACTATCTGTTGACAATCCATTTGCAAAACTA',
     ]
+
+    split_seqs = [group_codons(x) for x in sequences]
+
+    # Tokenize the sequences to test the tokenizer
+    tokenized = tokenizer(
+        split_seqs,
+        return_tensors='pt',
+        truncation=True,
+        padding='max_length',
+        max_length=2048,
+        return_special_tokens_mask=False,
+    )
+    print(tokenized)
 
     # The dataset splits the sequences into codons
     dataset = FastaDataset(
