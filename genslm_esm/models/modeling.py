@@ -761,9 +761,9 @@ class ESMC(nn.Module):
 
         # If sequence_id looks like a mask.
         if self._use_flash_attn:
-            assert (
-                sequence_id.dtype == torch.bool
-            ), 'sequence_id must be a boolean mask if Flash Attention is used'
+            assert sequence_id.dtype == torch.bool, (
+                'sequence_id must be a boolean mask if Flash Attention is used'
+            )
             assert sequence_id.shape == (B, L)
             assert unpad_input is not None
             x, indices, *_ = unpad_input(  # type: ignore
@@ -1306,6 +1306,9 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
 
         # We only need to mask tokens if we are training
         if not self.train_mode:
+            # Need to manually set the labels so that torch_call can adjust
+            # the label range to [0, 69) for the codon vocabulary.
+            batch['labels'] = batch['input_ids']
             return batch
 
         if self.mlm:
@@ -1385,10 +1388,9 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
             # gets shuffled in the hugging face distributed sampler.
             return BatchEncoding(
                 {
-                    # The amino acids are passed through the standard variables
-                    'input_ids': amino_batch['input_ids'],
-                    'attention_mask': amino_batch['attention_mask'],
-                    'labels': amino_batch['labels'],
+                    'aminoacid_input_ids': amino_batch['input_ids'],
+                    'aminoacid_attention_mask': amino_batch['attention_mask'],
+                    'aminoacid_labels': amino_batch['labels'],
                     'codon_input_ids': codon_batch['input_ids'],
                     'codon_attention_mask': codon_batch['attention_mask'],
                     'codon_labels': codon_batch['labels'],
@@ -1396,9 +1398,21 @@ class GenSLMColatorForLanguageModeling(DataCollatorForLanguageModeling):
             )
 
         elif self.return_codon:
-            return codon_batch
+            return BatchEncoding(
+                {
+                    'codon_input_ids': codon_batch['input_ids'],
+                    'codon_attention_mask': codon_batch['attention_mask'],
+                    'codon_labels': codon_batch['labels'],
+                },
+            )
         elif self.return_aminoacid:
-            return amino_batch
+            return BatchEncoding(
+                {
+                    'aminoacid_input_ids': amino_batch['input_ids'],
+                    'aminoacid_attention_mask': amino_batch['attention_mask'],
+                    'aminoacid_labels': amino_batch['labels'],
+                },
+            )
 
         raise ValueError(
             'Either return_codon or return_aminoacid must be True.',
