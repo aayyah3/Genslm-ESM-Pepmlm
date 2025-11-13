@@ -1205,6 +1205,9 @@ class GenslmEsmcModelOutput(ModelOutput):
 class GenslmEsmcModel(PreTrainedModel):
     """GenSLM-ESMC model for contrastive masked language modeling."""
 
+    # Set the model_type to 'genslm-esmc'
+    model_type = 'genslm-esmc'
+
     # Set the configuration class for the model to use for
     # initialization via from_pretrained()
     config_class = GenslmEsmcConfig
