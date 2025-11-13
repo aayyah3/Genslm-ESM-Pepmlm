@@ -9,7 +9,7 @@ from transformers import EsmTokenizer
 from genslm_esm.data import FastaDataset
 from genslm_esm.data import GenslmEsmcDataCollator
 from genslm_esm.data import group_codons
-from genslm_esm.modeling import EsmCForContrastiveMaskedLM
+from genslm_esm.modeling import GenslmEsmcModel
 
 
 def main() -> None:
@@ -17,7 +17,9 @@ def main() -> None:
     model_path = '/nfs/lambda_stor_01/homes/abrace/projects/genslm/src/genslm-tutorial-05-2025/model/checkpoint-203847'  # noqa: E501
 
     # Load the model from the checkpoint
-    model = EsmCForContrastiveMaskedLM.from_pretrained(model_path)
+    model = GenslmEsmcModel.from_pretrained(model_path)
+
+    # model.push_to_hub()
 
     # Set the model to evaluation mode
     model.eval()
