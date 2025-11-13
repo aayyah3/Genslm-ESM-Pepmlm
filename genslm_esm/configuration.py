@@ -7,13 +7,18 @@ from typing import Any
 from transformers import PretrainedConfig
 
 
-class ContrastiveEsmCConfig(PretrainedConfig):
-    """Add contrastive loss parameters to the ESM config."""
+class GenslmEsmcConfig(PretrainedConfig):
+    """Configuration for the GenSLM-ESMC model."""
+
+    # Set the model type to 'contrastive-esmc'
+    # This is used to identify the model type in the config file
+    model_type = 'genslm-esmc'
+    # Set the model architecture to 'EsmCForContrastiveMaskedLM'
+    # This is used to identify the model architecture in the config file
+    architecture = 'EsmCForContrastiveMaskedLM'
 
     def __init__(
         self,
-        model_name: str = 'esmc_300m',
-        base_model_path: str | None = None,
         d_model: int = 960,
         n_heads: int = 15,
         n_layers: int = 30,
@@ -22,19 +27,24 @@ class ContrastiveEsmCConfig(PretrainedConfig):
         **kwargs: Any,
     ) -> None:
         """Initialize the configuration."""
-        self.model_name = model_name
-        self.base_model_path = base_model_path
-        self.d_model = d_model if '300M' in model_name.upper() else 1152
-        self.n_heads = n_heads if '300M' in model_name.upper() else 18
-        self.n_layers = n_layers if '300M' in model_name.upper() else 36
+        self.d_model = d_model
+        self.n_heads = n_heads
+        self.n_layers = n_layers
         self.contrastive_temperature = contrastive_temperature
         self.use_flash_attn = use_flash_attn
         super().__init__(**kwargs)
 
 
 if __name__ == '__main__':
-    contrastive_esmc_config = ContrastiveEsmCConfig(
-        model_name='esmc_300m',
-        base_model_path='esm_esmc_300m',
+    config = GenslmEsmcConfig()
+    # Set the architectures and auto_map to use EsmCForContrastiveMaskedLM
+    config.architectures = ['GenslmEsmcModel']
+    config.auto_map = {
+        'AutoModel': 'genslm_esm.modeling.GenslmEsmcModel',
+        'AutoTokenizer': 'transformers.models.esm.tokenization_esm.EsmTokenizer',  # noqa: E501
+    }
+    config.library_name = 'genslm_esm'
+    config._name_or_path = (
+        'genslm-test/genslm-test-v1.5'  #'genslm/genslm-esmc-300m-contrastive'
     )
-    contrastive_esmc_config.save_pretrained('custom-esmc')
+    config.save_pretrained('genslm-esmc')

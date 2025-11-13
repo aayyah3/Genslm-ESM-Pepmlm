@@ -1,4 +1,4 @@
-"""Adapted PyTorch ESM model."""
+"""Modeling code for the GenSLM-ESMC model."""
 
 from __future__ import annotations
 
@@ -41,8 +41,7 @@ try:
 except (ImportError, RuntimeError):
     comm, rank, size = None, None, None
 
-
-from genslm_esm.configuration import ContrastiveEsmCConfig
+from genslm_esm.configuration import GenslmEsmcConfig
 
 # ESMC pad token id
 ESMC_PAD_TOKEN_ID = 1
@@ -1160,7 +1159,7 @@ class EsmContrastiveProjectionHead(nn.Module):
 
 
 @dataclass
-class EsmCForContrastiveMaskedLMOutput(ModelOutput):
+class GenslmEsmcModelOutput(ModelOutput):
     """
     Base class for ESM-C for contrastive masked language models outputs.
 
@@ -1203,14 +1202,14 @@ class EsmCForContrastiveMaskedLMOutput(ModelOutput):
     attentions: tuple[torch.FloatTensor, ...] | None = None
 
 
-class EsmCForContrastiveMaskedLM(PreTrainedModel):
-    """ESMC for contrastive masked language modeling."""
+class GenslmEsmcModel(PreTrainedModel):
+    """GenSLM-ESMC model for contrastive masked language modeling."""
 
     # Set the configuration class for the model to use for
     # initialization via from_pretrained()
-    config_class = ContrastiveEsmCConfig
+    config_class = GenslmEsmcConfig
 
-    def __init__(self, config: ContrastiveEsmCConfig) -> None:
+    def __init__(self, config: GenslmEsmcConfig) -> None:
         super().__init__(config)
         self.config = config
 
@@ -1259,7 +1258,7 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
         decode_aminoacid_head: bool = False,
         decode_codon_head: bool = False,
         compute_contrastive_loss: bool = False,
-    ) -> EsmCForContrastiveMaskedLMOutput:
+    ) -> GenslmEsmcModelOutput:
         """Forward pass for the ESM for contrastive masked language modeling.
 
         Parameters
@@ -1515,7 +1514,7 @@ class EsmCForContrastiveMaskedLM(PreTrainedModel):
         # NOTE: Since the codon and amino acid heads have different vocab
         # sizes, we need to compute and store the logits for each head
         # separately.
-        return EsmCForContrastiveMaskedLMOutput(
+        return GenslmEsmcModelOutput(
             loss=total_loss,
             contrastive_loss=contrastive_loss,
             mlm_loss=mlm_loss,
