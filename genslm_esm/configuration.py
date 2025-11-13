@@ -13,9 +13,10 @@ class GenslmEsmcConfig(PretrainedConfig):
     # Set the model type to 'contrastive-esmc'
     # This is used to identify the model type in the config file
     model_type = 'genslm-esmc'
-    # Set the model architecture to 'EsmCForContrastiveMaskedLM'
+
+    # Set the model architecture to 'GenslmEsmcModel'
     # This is used to identify the model architecture in the config file
-    architecture = 'EsmCForContrastiveMaskedLM'
+    architecture = 'GenslmEsmcModel'
 
     def __init__(
         self,
@@ -26,7 +27,24 @@ class GenslmEsmcConfig(PretrainedConfig):
         use_flash_attn: bool = False,
         **kwargs: Any,
     ) -> None:
-        """Initialize the configuration."""
+        """Initialize the configuration.
+
+        Parameters
+        ----------
+        d_model: int
+            The dimension of the model.
+        n_heads: int
+            The number of heads.
+        n_layers: int
+            The number of layers.
+        contrastive_temperature: float
+            The temperature for the contrastive loss.
+        use_flash_attn: bool
+            Whether to use flash attention.
+        kwargs: Any
+            Additional keyword arguments.
+        """
+        # Set the model parameters
         self.d_model = d_model
         self.n_heads = n_heads
         self.n_layers = n_layers
@@ -34,22 +52,34 @@ class GenslmEsmcConfig(PretrainedConfig):
         self.use_flash_attn = use_flash_attn
         super().__init__(**kwargs)
 
+    def set_hf_metadata(self, model_path: str) -> GenslmEsmcConfig:
+        """Set the Hugging Face metadata for the model.
 
-def get_config(model_path: str) -> GenslmEsmcConfig:
-    """Get the configuration for the GenSLM-ESMC model."""
-    config = GenslmEsmcConfig()
-    config.architectures = ['GenslmEsmcModel']
-    config.auto_map = {
-        'AutoModel': 'genslm_esm.modeling.GenslmEsmcModel',
-        'AutoTokenizer': 'transformers.models.esm.tokenization_esm.EsmTokenizer',  # noqa: E501
-    }
-    config.library_name = 'genslm_esm'
-    config._name_or_path = model_path
-    return config
+        Parameters
+        ----------
+        model_path: str
+            The path to the model.
+
+        Returns
+        -------
+        GenslmEsmcConfig
+            The configuration with the Hugging Face metadata set.
+        """
+        self.architectures = ['GenslmEsmcModel']
+        self.auto_map = {
+            'AutoModel': 'genslm_esm.modeling.GenslmEsmcModel',
+            'AutoTokenizer': 'transformers.models.esm.tokenization_esm.EsmTokenizer',  # noqa: E501
+        }
+        self.library_name = 'genslm_esm'
+        self._name_or_path = model_path
+        return self
 
 
 if __name__ == '__main__':
     #'genslm/genslm-esmc-300m-contrastive'
     _name_or_path = 'genslm-test/genslm-test-v1.5'
-    config = get_config(_name_or_path)
+    config = GenslmEsmcConfig()
+    # Set the Hugging Face metadata for the model
+    config.set_hf_metadata(_name_or_path)
+    # Save the configuration to the local directory
     config.save_pretrained('genslm-esmc')
