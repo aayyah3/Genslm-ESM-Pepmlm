@@ -6,6 +6,7 @@ import torch
 from torch.utils.data import DataLoader
 from transformers import EsmTokenizer
 
+from genslm_esm.configuration import get_config
 from genslm_esm.data import FastaDataset
 from genslm_esm.data import GenslmEsmcDataCollator
 from genslm_esm.data import group_codons
@@ -16,10 +17,14 @@ def main() -> None:
     """Run the example."""
     model_path = '/nfs/lambda_stor_01/homes/abrace/projects/genslm/src/genslm-tutorial-05-2025/model/checkpoint-203847'  # noqa: E501
 
-    # Load the model from the checkpoint
-    model = GenslmEsmcModel.from_pretrained(model_path)
+    # Get the configuration for the model
+    config = get_config(model_path)
 
-    # model.push_to_hub()
+    # Load the model from the checkpoint
+    model = GenslmEsmcModel.from_pretrained(model_path, config=config)
+
+    # Push the model to the Hugging Face hub
+    # model.push_to_hub('genslm-test/genslm-test-v1.5')
 
     # Set the model to evaluation mode
     model.eval()
