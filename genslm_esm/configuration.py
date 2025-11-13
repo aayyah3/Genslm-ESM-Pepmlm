@@ -35,16 +35,21 @@ class GenslmEsmcConfig(PretrainedConfig):
         super().__init__(**kwargs)
 
 
-if __name__ == '__main__':
+def get_config(model_path: str) -> GenslmEsmcConfig:
+    """Get the configuration for the GenSLM-ESMC model."""
     config = GenslmEsmcConfig()
-    # Set the architectures and auto_map to use EsmCForContrastiveMaskedLM
     config.architectures = ['GenslmEsmcModel']
     config.auto_map = {
         'AutoModel': 'genslm_esm.modeling.GenslmEsmcModel',
         'AutoTokenizer': 'transformers.models.esm.tokenization_esm.EsmTokenizer',  # noqa: E501
     }
     config.library_name = 'genslm_esm'
-    config._name_or_path = (
-        'genslm-test/genslm-test-v1.5'  #'genslm/genslm-esmc-300m-contrastive'
-    )
+    config._name_or_path = model_path
+    return config
+
+
+if __name__ == '__main__':
+    #'genslm/genslm-esmc-300m-contrastive'
+    _name_or_path = 'genslm-test/genslm-test-v1.5'
+    config = get_config(_name_or_path)
     config.save_pretrained('genslm-esmc')
