@@ -52,12 +52,12 @@ class GenslmEsmcConfig(PretrainedConfig):
         self.use_flash_attn = use_flash_attn
         super().__init__(**kwargs)
 
-    def set_hf_metadata(self, model_path: str) -> GenslmEsmcConfig:
+    def set_hf_metadata(self, model_name: str) -> GenslmEsmcConfig:
         """Set the Hugging Face metadata for the model.
 
         Parameters
         ----------
-        model_path: str
+        model_name: str
             The path to the model.
 
         Returns
@@ -71,7 +71,7 @@ class GenslmEsmcConfig(PretrainedConfig):
             'AutoTokenizer': 'transformers.models.esm.tokenization_esm.EsmTokenizer',  # noqa: E501
         }
         self.library_name = 'genslm_esm'
-        self._name_or_path = model_path
+        self._name_or_path = model_name
         return self
 
 
