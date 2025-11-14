@@ -1342,8 +1342,10 @@ class GenslmEsmcModel(PreTrainedModel):
             )
         elif aminoacid_input_ids is not None:
             input_ids = aminoacid_input_ids
+            attention_mask = aminoacid_attention_mask
         elif codon_input_ids is not None:
             input_ids = codon_input_ids
+            attention_mask = codon_attention_mask
         else:
             raise ValueError(
                 'Must provide either codon_input_ids or aminoacid_input_ids',
