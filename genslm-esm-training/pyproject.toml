@@ -28,7 +28,6 @@ dependencies = [
     "evaluate",
     "h5py",
     "wandb",
-    "biopython",
     "typer",
 ]
 
