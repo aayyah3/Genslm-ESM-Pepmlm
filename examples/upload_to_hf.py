@@ -35,10 +35,8 @@ def main() -> None:
     # Set the Hugging Face metadata for the model
     config.set_hf_metadata(args.model_id)
 
-    # Load the model from the checkpoint
+    # Load the model and tokenizer from the checkpoint
     model = GenslmEsmcModel.from_pretrained(args.model_path, config=config)
-
-    # Load the tokenizer from the model path
     tokenizer = EsmTokenizer.from_pretrained(args.model_path)
 
     # Save locally to the save directory
