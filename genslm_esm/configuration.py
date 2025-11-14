@@ -67,6 +67,7 @@ class GenslmEsmcConfig(PretrainedConfig):
         """
         self.architectures = ['GenslmEsmcModel']
         self.auto_map = {
+            'AutoConfig': 'genslm_esm.configuration.GenslmEsmcConfig',
             'AutoModel': 'genslm_esm.modeling.GenslmEsmcModel',
             'AutoTokenizer': 'transformers.models.esm.tokenization_esm.EsmTokenizer',  # noqa: E501
         }
