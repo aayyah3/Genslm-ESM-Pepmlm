@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import shutil
+from pathlib import Path
 
 from huggingface_hub import HfApi
 from transformers import EsmTokenizer
 
+import genslm_esm
 from genslm_esm.configuration import GenslmEsmcConfig
 from genslm_esm.modeling import GenslmEsmcModel
 
@@ -61,7 +64,9 @@ def main() -> None:
     tokenizer.save_pretrained(args.save_dir)
 
     # Copy custom code into repo directory
-    # shutil.copytree('./genslm_esm', f'{save_dir}/genslm_esm')
+    genslm_esm_dir = Path(genslm_esm.__file__).relative_to(Path.cwd()).parent
+    for file in ['configuration.py', 'modeling.py']:
+        shutil.copy(genslm_esm_dir / file, Path(args.save_dir) / file)
 
     # Push everything to the Hugging Face hub
     model.push_to_hub(args.model_id, private=True)

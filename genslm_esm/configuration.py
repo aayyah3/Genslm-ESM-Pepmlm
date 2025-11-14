@@ -10,7 +10,6 @@ from transformers import PretrainedConfig
 class GenslmEsmcConfig(PretrainedConfig):
     """Configuration for the GenSLM-ESMC model."""
 
-    # Set the model type to 'contrastive-esmc'
     # This is used to identify the model type in the config file
     model_type = 'genslm-esmc'
 
@@ -67,8 +66,8 @@ class GenslmEsmcConfig(PretrainedConfig):
         """
         self.architectures = ['GenslmEsmcModel']
         self.auto_map = {
-            'AutoConfig': 'genslm_esm.configuration.GenslmEsmcConfig',
-            'AutoModel': 'genslm_esm.modeling.GenslmEsmcModel',
+            'AutoConfig': 'configuration.GenslmEsmcConfig',
+            'AutoModel': 'modeling.GenslmEsmcModel',
             'AutoTokenizer': 'transformers.models.esm.tokenization_esm.EsmTokenizer',  # noqa: E501
         }
         self.library_name = 'genslm_esm'
