@@ -14,10 +14,27 @@ from genslm_esm.modeling import GenslmEsmcModel
 def main() -> None:
     """Upload the model to the Hugging Face hub."""
     # Parse the command line arguments
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--model-path', type=str, required=True)
-    parser.add_argument('--model-id', type=str, required=True)
-    parser.add_argument('--save-dir', type=str, required=True)
+    parser = argparse.ArgumentParser(
+        description='Upload the model to the Hugging Face hub.',
+    )
+    parser.add_argument(
+        '--model-path',
+        type=str,
+        required=True,
+        help='The path to the model checkpoint.',
+    )
+    parser.add_argument(
+        '--model-id',
+        type=str,
+        required=True,
+        help='The model id to use for the Hugging Face hub.',
+    )
+    parser.add_argument(
+        '--save-dir',
+        type=str,
+        required=True,
+        help='The directory to save the model to.',
+    )
     args = parser.parse_args()
 
     # Load the config from the model path
