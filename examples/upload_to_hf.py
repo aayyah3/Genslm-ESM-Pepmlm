@@ -74,3 +74,7 @@ def main() -> None:
         repo_id=args.model_id,
         repo_type='model',
     )
+
+
+if __name__ == '__main__':
+    main()
