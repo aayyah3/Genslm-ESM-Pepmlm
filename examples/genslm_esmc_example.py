@@ -28,9 +28,7 @@ def main() -> None:
 
     # Load the model from the checkpoint
     model = GenslmEsmcModel.from_pretrained(model_path, config=config)
-
-    # Push the model to the Hugging Face hub
-    # model.push_to_hub('genslm-test/genslm-test-v1.5')
+    tokenizer = EsmTokenizer.from_pretrained(model_path)
 
     # Set the model to evaluation mode
     model.eval()
@@ -50,10 +48,6 @@ def main() -> None:
 
     print(f'Model is on device: {next(model.parameters()).device}')
     print(f'Model dtype: {next(model.parameters()).dtype}')
-
-    tokenizer = EsmTokenizer.from_pretrained(model_path)
-    print('Tokenizer:')
-    print(tokenizer)
 
     # Test sequences
     sequences = [
