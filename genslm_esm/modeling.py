@@ -1160,31 +1160,77 @@ class EsmContrastiveProjectionHead(nn.Module):
 
 @dataclass
 class GenslmEsmcModelOutput(ModelOutput):
-    """
-    Base class for ESM-C for contrastive masked language models outputs.
+    """GenSLM-ESMC model outputs.
 
-    Parameters
+    All losses are averaged over the batch dimension.
+
+    Attributes
     ----------
-    loss: torch.FloatTensor
+    loss: torch.FloatTensor | None
+        (`torch.FloatTensor` of shape `(1,)`, *optional*, returned when either
+        `codon_labels` or `aminoacid_labels` are provided). If only
+        `codon_labels` is provided, then it returns the masked language
+        modeling (MLM) loss for the codon head. If only `aminoacid_labels` is
+        provided, then it returns the masked language modeling (MLM) loss for
+        the amino acid head. If both `codon_labels` and `aminoacid_labels` are
+        provided, then it returns the average of the codon and amino acid MLM
+        losses. If `compute_contrastive_loss` is True, then it returns the
+        sum of the averaged masked language modeling (MLM) loss of the codon
+        and amino acid heads and the contrastive loss. If both `codon_labels`
+        and `aminoacid_labels` are not provided, then it returns None. The
+        loss is averaged over the batch dimension.
+    contrastive_loss: torch.FloatTensor | None
+        (`torch.FloatTensor` of shape `(1,)`, *optional*, returned when both
+        `codon_labels` and `aminoacid_labels` are provided and
+        `compute_contrastive_loss` is True). Stores the SimCLR-style
+        contrastive loss averaged over the batch dimension.
+    mlm_loss: torch.FloatTensor | None
         (`torch.FloatTensor` of shape `(1,)`, *optional*, returned when
-        `labels` is provided) Masked language modeling (MLM) loss.
-    logits: torch.FloatTensor
+        `codon_labels` or `aminoacid_labels` are provided). If both are
+        provided, then it returns the average of the codon and amino acid MLM
+        losses. If only `codon_labels` is provided, then it stores the masked
+        language modeling (MLM) loss for the codon head. If only
+        `aminoacid_labels` is provided, then it stores the masked language
+        modeling (MLM) loss for the amino acid head. If neither are provided,
+        then it returns None. The masked language modeling (MLM) loss is
+        averaged over the batch dimension.
+    codon_mlm_loss: torch.FloatTensor | None
+        (`torch.FloatTensor` of shape `(1,)`, *optional*, returned when
+        `codon_labels` is provided) the masked language modeling (MLM) loss
+        for the codon head averaged over the batch dimension, or None if
+        `codon_labels` is not provided.
+    aminoacid_mlm_loss: torch.FloatTensor
+        (`torch.FloatTensor` of shape `(1,)`, *optional*, returned when
+        `aminoacid_labels` is provided) the masked language modeling (MLM) loss
+        for the amino acid head averaged over the batch dimension, or None if
+        `aminoacid_labels` is not provided.
+    codon_logits: torch.FloatTensor | None
+        (`torch.FloatTensor` of shape `(batch_size, sequence_length, 69)`,
+        *optional*, returned when `codon_labels` is provided) the logits for
+        the codon head. The logits are the prediction scores of the language
+        modeling head (scores for each vocabulary token before SoftMax). The
+        vocabulary size is 69 which accounts for the 64 codon tokens and 5
+        special tokens.
+    aminoacid_logits: torch.FloatTensor | None
+        (`torch.FloatTensor` of shape `(batch_size, sequence_length, 64)`,
+        *optional*, returned when `aminoacid_labels` is provided) the logits
+        for `aminoacid_labels` is provided) the logits for the amino acid head.
         Prediction scores of the language modeling head (scores for each
-        vocabulary token before SoftMax) of shape `(batch_size, sequence_length
-        , config.vocab_size)`
-    hidden_states: tuple[torch.FloatTensor, ...]
-        (`tuple(torch.FloatTensor)`, *optional*, returned when
-        `output_hidden_states=True` is passed or when
-        `config.output_hidden_states=True`) Tuple of `torch.FloatTensor`
-        (one for the output of the embeddings, if the model has an embedding
-        layer, + one for the output of each layer) of shape `(batch_size,
-        sequence_length, hidden_size)`.
+        vocabulary token before SoftMax). The vocabulary size is 64, for which
+        a subset is used to account for the 20 standard amino acids and special
+        tokens. The vocabulary has room for extra tokens as an artifact of the
+        base ESMC model architecture.
+    hidden_states: torch.FloatTensor | None
+        (`torch.FloatTensor` of shape `(num_layers, batch_size,
+        sequence_length, hidden_size)`, *optional*) The hidden states of the
+        model transformer at each layer. The final hidden state is stored in
+        the last entry, i.e., `hidden_states[-1]` and has shape (batch_size,
+        sequence_length, hidden_size).
     attentions: tuple[torch.FloatTensor, ...]
-        Attentions weights after the attention softmax, used to compute the
-        weighted average in the self-attention heads.
+        Not currently supported. Attentions weights after the attention
+        softmax, used to compute the weighted average in the self-attention
+        heads.
     """
-
-    # TODO: Update this docstring
 
     # The losses output by the model
     loss: torch.FloatTensor | None = None
@@ -1198,12 +1244,22 @@ class GenslmEsmcModelOutput(ModelOutput):
     aminoacid_logits: torch.FloatTensor | None = None
 
     # The hidden states output by the model
-    hidden_states: tuple[torch.FloatTensor, ...] | None = None
+    hidden_states: torch.FloatTensor | None = None
     attentions: tuple[torch.FloatTensor, ...] | None = None
 
 
 class GenslmEsmcModel(PreTrainedModel):
-    """GenSLM-ESMC model for contrastive masked language modeling."""
+    """GenSLM-ESMC model for contrastive masked language modeling.
+
+    A multi-modal representation learning model that learns to represent both
+    codon and amino acid sequences in a shared embedding space. It supports
+    the following tasks:
+    - Multi-modal representation learning task
+    - Reverse translation task
+    - Forward translation task
+    - Standard codon language modeling task
+    - Standard amino acid language modeling task
+    """
 
     # Set the model_type to 'genslm-esmc'
     model_type = 'genslm-esmc'
@@ -1213,6 +1269,13 @@ class GenslmEsmcModel(PreTrainedModel):
     config_class = GenslmEsmcConfig
 
     def __init__(self, config: GenslmEsmcConfig) -> None:
+        """Initialize the GenSLM-ESMC model.
+
+        Parameters
+        ----------
+        config: GenslmEsmcConfig
+            The configuration for the model.
+        """
         super().__init__(config)
         self.config = config
 
@@ -1264,6 +1327,64 @@ class GenslmEsmcModel(PreTrainedModel):
     ) -> GenslmEsmcModelOutput:
         """Forward pass for the ESM for contrastive masked language modeling.
 
+        This method implements the following tasks based on the arguments:
+        - Multi-modal representation learning task
+        - Reverse translation task
+        - Forward translation task
+        - Standard codon language modeling task
+        - Standard amino acid language modeling task
+
+        Multi-modal representation learning task:
+        ---------------------------------------------------------------------
+        If both `codon_input_ids` and `aminoacid_input_ids` are provided and
+        `compute_contrastive_loss` is True, then the contrastive loss is
+        computed and the `contrastive_loss` attribute in the output is
+        populated. If both `codon_labels` and `aminoacid_labels` are provided,
+        then the `loss` attribute in the output is populated with the average
+        of the codon and amino acid MLM losses and the contrastive loss.
+
+        Reverse translation task:
+        ---------------------------------------------------------------------
+        If either `aminoacid_input_ids` are provided and `decode_codon_head`
+        is True, then the task is to predict the codon labels given the amino
+        acid embeddings. If the `codon_labels` are provided, the
+        `codon_mlm_loss` represents the accuracy of the reverse translation
+        task. The `aminoacid_mlm_loss` is also computed for completeness to
+        enable checking the perplexity of the input amino acid sequences.
+        In this case, the `loss` attribute in the output is populated with the
+        average of the codon and amino acid MLM losses.
+
+        Forward translation task:
+        ---------------------------------------------------------------------
+        If `codon_input_ids` are provided and `decode_aminoacid_head` is True,
+        then the task is to predict the amino acid labels given the codon
+        embeddings. If the `aminoacid_labels` are provided, the
+        `aminoacid_mlm_loss` represents the accuracy of the forward translation
+        task. The `codon_mlm_loss` is also computed for completeness to enable
+        checking the perplexity of the input codon sequences. In this case,
+        the `loss` attribute in the output is populated with the average of the
+        codon and amino acid MLM losses.
+
+        Standard codon language modeling task:
+        ---------------------------------------------------------------------
+        If only `codon_input_ids` and `codon_attention_mask` are provided,
+        then the task is to predict the codon labels given the codon embeddings
+        (standard codon language modeling task). If the `codon_labels` are
+        provided, the `codon_mlm_loss` represents the accuracy of the codon
+        language modeling task. In this case, the both the `loss` and
+        `mlm_loss` attributes in the output are populated with the codon MLM
+        loss.
+
+        Standard amino acid language modeling task:
+        ---------------------------------------------------------------------
+        If only `aminoacid_input_ids` and `aminoacid_attention_mask` are
+        provided, then the task is to predict the amino acid labels given the
+        amino acid embeddings (standard amino acid language modeling task). If
+        the `aminoacid_labels` are provided, the `aminoacid_mlm_loss`
+        represents the accuracy of the amino acid language modeling task.
+        In this case, the both the `loss` and `mlm_loss` attributes in the
+        output are populated with the amino acid MLM loss.
+
         Parameters
         ----------
         aminoacid_input_ids: torch.LongTensor | None
@@ -1274,34 +1395,59 @@ class GenslmEsmcModel(PreTrainedModel):
             (batch_size, sequence_length)
         aminoacid_labels: torch.LongTensor | None
             Labels for computing the masked language modeling loss.
-            Indices should be in `[-100, 0, ..., config.vocab_size]`
-            (see `input_ids` docstring) Tokens with indices set to `-100` are
-            ignored (masked), the loss is only computed for the tokens with
-            labels in `[0, ..., config.vocab_size]`.
-            (batch_size, sequence_length)
+            Indices should be in `[-100, 0, ..., 64]` (see
+            `aminoacid_input_ids` docstring) Tokens with indices set to `-100`
+            are ignored (masked), the loss is only computed for the tokens with
+            labels in `[0, ..., 64]`. (batch_size, sequence_length)
         codon_input_ids: torch.LongTensor | None
             Input ids for the codon sequences (batch_size, sequence_length)
         codon_attention_mask: torch.Tensor | None
-            Attention mask for the codon sequences
-            (batch_size, sequence_length)
+            Attention mask for the codon sequences (batch_size,
+            sequence_length)
         codon_labels: torch.LongTensor | None
             Labels for computing the masked language modeling loss. Indices
-            should be in `[-100, 0, ..., config.vocab_size]`
-            (see `input_ids` docstring) Tokens with indices set to `-100`
+            should be in `[-100, 0, ..., 69]`
+            (see `codon_input_ids` docstring) Tokens with indices set to `-100`
             are ignored (masked), the loss is only computed for the tokens
-            with labels in `[0, ..., config.vocab_size]`.
+            with labels in `[0, ..., 69]`. Note that the vocabulary for codons
+            and amino acids both starts at index 0, as there are two separate
+            vocabulary sets and language modeling heads for codons and amino
+            acids. Using the `GenslmEsmcDataCollator` to collate the data,
+            shifts the indices of the codon labels to properly account for it.
             (batch_size, sequence_length)
         decode_aminoacid_head (`bool`, optional, defaults to False):
             Whether to use the amino acid head for prediction, regardless of
-            config settings.
+            config settings. This can be used for forward translation tasks.
         decode_codon_head (`bool`, optional, defaults to False):
             Whether to use the codon head for prediction, regardless of
-            config settings.
+            config settings. This can be used for reverse translation tasks.
         compute_contrastive_loss: bool
-            Whether to compute the contrastive loss.
-        """
-        # TODO: Update this docstring
+            Whether to compute the contrastive loss. This populates the
+            `contrastive_loss` attribute in the output and requires that both
+            `codon_input_ids` and `aminoacid_input_ids` are provided.
 
+        Returns
+        -------
+        GenslmEsmcModelOutput
+            The output of the GenSLM-ESMC model.
+            - `loss`: The loss of the model.
+            - `contrastive_loss`: The contrastive loss of the model.
+            - `mlm_loss`: The masked language modeling (MLM) loss of the model.
+            - `codon_mlm_loss`: The MLM loss of the codon head.
+            - `aminoacid_mlm_loss`: The MLM loss of the amino acid head.
+            - `codon_logits`: The logits for the codon head.
+            - `aminoacid_logits`: The logits for the amino acid head.
+            - `hidden_states`: The hidden states of the model.
+
+        Raises
+        ------
+        ValueError: If `aminoacid_attention_mask` is not provided if
+            `aminoacid_input_ids` is not None.
+        ValueError: If `codon_attention_mask` is not provided if
+            `codon_input_ids` is not None.
+        ValueError: If `codon_input_ids` and `aminoacid_input_ids` are not
+            provided.
+        """
         # Validate the input arguments
         # ================================================================
         if (
@@ -1373,15 +1519,6 @@ class GenslmEsmcModel(PreTrainedModel):
         # output into codon and amino acid embeddings to compute logits using
         # the respective heads.
         if codon_input_ids is not None and aminoacid_input_ids is not None:
-            # TODO: Should we require decode_aminoacid_head or
-            # decode_codon_head to be None in this case?
-
-            # if decode_aminoacid_head or decode_codon_head:
-            #     raise ValueError(
-            #         'decode_aminoacid_head and decode_codon_head must be None ' # noqa: E501
-            #         'when both codon_input_ids and aminoacid_input_ids are provided', # noqa: E501
-            #     )
-
             # NOTE: sequence_output stores the concatenated codon and amino
             # acid embeddings here.
 
