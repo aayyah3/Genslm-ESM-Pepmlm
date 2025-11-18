@@ -69,10 +69,6 @@ def main() -> None:
     for file in ['configuration.py', 'modeling.py']:
         shutil.copy(genslm_esm_dir / file, Path(args.save_dir) / file)
 
-    # # Push everything to the Hugging Face hub
-    # model.push_to_hub(args.model_id, private=True)
-    # tokenizer.push_to_hub(args.model_id, private=True)
-
     # Ensure the repo exists (idempotent; will not error if it already exists)
     create_repo(
         repo_id=args.model_id,
