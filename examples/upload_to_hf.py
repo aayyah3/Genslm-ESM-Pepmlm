@@ -1,4 +1,20 @@
-"""Upload the model to the Hugging Face hub."""
+"""Upload the model to the Hugging Face hub.
+
+Requires being logged in to the Hugging Face hub.
+
+This command will prompt you to enter your Hugging Face token:
+```
+huggingface-cli login
+```
+
+Then run the script with the following command:
+```
+python upload_to_hf.py \
+    --model-path path/to/model \
+    --model-id user/model_name \
+    --save-dir path/to/save/dir
+```
+"""
 
 from __future__ import annotations
 
