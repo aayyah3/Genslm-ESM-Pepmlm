@@ -19,9 +19,9 @@ pip install git+ssh://git@github.com/ramanathanlab/genslm-esm.git@main
 
 The models are hosted on the Hugging Face hub. To install the models, you can use the `from_pretrained` method. For example:
 ```python
-from genslm_esm.modeling import GenslmEsmcModel
+from transformers import AutoModel
 
-model = GenslmEsmcModel.from_pretrained("genslm-test/genslm-esmc-300M-contrastive")
+model = AutoModel.from_pretrained("genslm-test/genslm-esmc-300M-contrastive")
 ```
 
 ### Supported model IDs
@@ -40,7 +40,7 @@ Models using ESMC-600M as a base:
 
 ## Usage
 
-To use the model, you can use the `GenslmEsmcModel` class. For example:
+To use the model, you can either use the `GenslmEsmcModel` class or the `AutoModel` class. For example:
 ```python
 import torch
 from torch.utils.data import DataLoader
@@ -53,7 +53,7 @@ from genslm_esm.data import GenslmEsmcDataCollator
 # Define which model id to use
 model_id = "genslm-test/genslm-esmc-300M-contrastive"
 
-model = GenslmEsmcModel.from_pretrained(model_id)
+model = AutoModel.from_pretrained(model_id)
 tokenizer = AutoTokenizer.from_pretrained(model_id)
 
 # Set the model to evaluation mode
