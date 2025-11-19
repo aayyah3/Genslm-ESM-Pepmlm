@@ -245,3 +245,6 @@ To test the code, run the following command:
 pre-commit run --all-files
 tox -e py310
 ```
+
+## Questions
+If you have any questions, please open an issue on the GitHub repository and we'll get back to you as soon as possible.
