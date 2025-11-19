@@ -14,7 +14,7 @@ from genslm_esm.data import GenslmEsmcDataCollator
 def main() -> None:
     """Run the example."""
     # Define the model id to use
-    model_id = 'genslm-test/genslm-test-v1.5'
+    model_id = 'genslm-test/genslm-esmc-600M-contrastive'
 
     # Load the model and tokenizer from Hugging Face
     model = AutoModel.from_pretrained(model_id, trust_remote_code=True)
@@ -23,7 +23,7 @@ def main() -> None:
     # Set the model to evaluation mode
     model.eval()
 
-    print('Reloaded model:')
+    # Print the model architecture
     print(model)
 
     # Get the device to run the model on

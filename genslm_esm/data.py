@@ -274,17 +274,35 @@ class GenslmEsmcDataCollator(DataCollatorForLanguageModeling):
         return_aminoacid: bool = False,
         train_mode: bool = False,
         max_length: int = 2048,
+        padding: str = 'longest',
         **kwargs: Any,
     ) -> None:
         """Collate sequences for language modeling.
 
         Augment the underlying DataCollatorForLanguageModeling to handle
         multiple batch encoding inputs.
+
+        Parameters
+        ----------
+        return_codon : bool, optional
+            Whether to return codon sequences, by default True.
+        return_aminoacid : bool, optional
+            Whether to return amino acid sequences, by default False.
+        train_mode : bool, optional
+            Whether we are in training mode (i.e. whether to mask tokens),
+            by default False.
+        max_length : int, optional
+            Maximum sequence length, by default 2048.
+        padding : str, optional
+            Padding strategy ('longest' or 'max_length'). If 'longest', pad to
+            the longest sequence in the batch. If 'max_length', pad to the
+            maximum length specified by max_length. By default 'longest'.
         """
         self.return_codon = return_codon
         self.return_aminoacid = return_aminoacid
         self.train_mode = train_mode
         self.max_length = max_length
+        self.padding = padding
         super().__init__(**kwargs)
 
     def tokenize(self, sequences: list[str]) -> BatchEncoding:
@@ -293,7 +311,7 @@ class GenslmEsmcDataCollator(DataCollatorForLanguageModeling):
             sequences,
             return_tensors='pt',
             truncation=True,
-            padding='max_length',
+            padding=self.padding,
             max_length=self.max_length,
             return_special_tokens_mask=self.train_mode and self.mlm,
         )
