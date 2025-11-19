@@ -1,0 +1,14 @@
+per_device_train_batch_size: 4
+gradient_accumulation_steps: 16
+num_train_epochs: 50
+compute_codon_loss: true
+compute_aminoacid_loss: true
+compute_contrastive_loss: true
+contrastive_temperature: 0.1
+contrastive_pooler: mean
+base_model: facebook/esm2_t33_650M_UR50D
+tokenizer_path: tokenizer_esm_genslm
+output_path: production_runs/contrastive_650m
+train_path: data/mdh/train.fasta
+validation_path: data/mdh/valid.fasta
+wandb_project: genslm-esm

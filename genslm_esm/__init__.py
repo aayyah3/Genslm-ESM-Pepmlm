@@ -1,1 +1,7 @@
-__version__ = "2025.11.04"
+"""GenSLM-ESM package."""
+
+from __future__ import annotations
+
+import importlib.metadata
+
+__version__ = importlib.metadata.version('genslm_esm')
