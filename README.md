@@ -2,7 +2,7 @@
 
 This repository contains the code for the GenSLM-ESM model.
 
-GenSLM-ESM is a multi-modal representation learning model that learns to represent both codon and amino acid sequences in a shared embedding space. It supports the following tasks:
+GenSLM-ESM is a multi-modal representation learning model that learns to represent both codon and amino acid sequences in a shared embedding space using the genetic code as an inductive bias. It supports the following tasks:
 - Multi-modal representation learning task
 - Reverse translation task
 - Forward translation task
@@ -111,7 +111,10 @@ for batch in dataloader:
     outputs = model(**items)
     print(outputs.loss)
 ```
-### GenSLM-ESMC inputs
+### GenSLM-ESM inputs
+
+As GenSLM-ESM is a multi-modal model, it accepts both codon and amino acid sequences as input, we've
+provided the FastaDataset class and GenslmEsmcDataCollator class to help you prepare the data for the model, as shown in the example above.
 
 The `GenslmEsmcModel.forward()` method accepts the following input parameters:
 
@@ -152,7 +155,7 @@ The `GenslmEsmcModel.forward()` method accepts the following input parameters:
 
 #### Supported Tasks
 
-The GenSLM-ESMC model supports five different tasks based on the combination of inputs provided:
+The GenSLM-ESM model supports five different tasks based on the combination of inputs provided:
 
 1. **Multi-modal Representation Learning Task**
    - **Inputs**: Both `codon_input_ids` and `aminoacid_input_ids` with `compute_contrastive_loss=True`
@@ -179,7 +182,7 @@ The GenSLM-ESMC model supports five different tasks based on the combination of 
    - **Purpose**: Standard masked language modeling for amino acid sequences
    - **Outputs**: `aminoacid_mlm_loss` represents the accuracy of amino acid language modeling. Both `loss` and `mlm_loss` are set to the amino acid MLM loss.
 
-#### GenSLM-ESMC outputs
+#### GenSLM-ESM outputs
 The output of the model is a `GenslmEsmcModelOutput` dataclass with the following attributes:
 
 #### Loss Attributes
