@@ -114,7 +114,7 @@ for batch in dataloader:
 ### GenSLM-ESM inputs
 
 As GenSLM-ESM is a multi-modal model, it accepts both codon and amino acid sequences as input, we've
-provided the FastaDataset class and GenslmEsmcDataCollator class to help you prepare the data for the model, as shown in the example above.
+provided the `FastaDataset` class and `GenslmEsmcDataCollator` class to help you prepare the data for the model, as shown in the example above.
 
 The `GenslmEsmcModel.forward()` method accepts the following input parameters:
 
