@@ -24,7 +24,7 @@ from genslm_esm.modeling import GenslmEsmcModel
 model = GenslmEsmcModel.from_pretrained("genslm-test/genslm-esmc-300M-contrastive")
 ```
 
-**Supported model IDs**
+### Supported model IDs
 
 Models using the ESM-300M as a base:
 - `genslm-test/genslm-esmc-300M-aminoacid`
