@@ -100,9 +100,13 @@ def codon_seq_to_amino_acid(codon_seq: str) -> str:
 
     Replace invalid codons with '<unk>'.
     """
+    # Split the codon sequence into codons and translate each codon
+    # Split off any leading or trailing whitespace (which generally
+    # happens at the end of the sequence since stop codons get mapped
+    # to '' which creates extra spaces when joining)
     return ' '.join(
         translation_table.get(codon, '<unk>') for codon in codon_seq.split()
-    )
+    ).strip()
 
 
 @dataclass
@@ -230,7 +234,9 @@ class FastaDataset(Dataset):
         if contains_nucleotide:
             self.sequences = [group_codons(seq) for seq in sequences]
         else:
-            self.sequences = sequences
+            # We need to add a space between each amino acid for tokenization
+            # to avoid codon collisions (e.g., 'GGA' -> 'G G A')
+            self.sequences = [' '.join(seq) for seq in sequences]
 
     def __len__(self) -> int:
         """Return the number of sequences in the dataset."""
