@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from genslm_esm.data import FastaDataset
 from genslm_esm.data import group_codons
 
 
@@ -164,3 +165,45 @@ class TestGroupCodons:
         assert '  ' not in result  # No double spaces
         # Three spaces for four codons
         assert result.count(' ') == 3  # noqa: PLR2004
+
+
+def test_dataset_amino_acid_space() -> None:
+    """Test that the FastaDataset handles amino acid space correctly."""
+    # Sequences that look like nucleotide, but we want amino acids
+    sequences = ['ATGGCTAGCTAA', 'ATGCGT']
+
+    # Create the dataset requesting amino acids
+    dataset = FastaDataset(
+        sequences=sequences,
+        return_codon=False,
+        return_aminoacid=True,  # Request amino acids in the getitem
+        contains_nucleotide=False,  # Indicate sequences are amino acids
+    )
+
+    # Get all items in the dataset
+    items = [dataset[i] for i in range(len(dataset))]
+
+    # Check that amino acids are space-separated
+    assert items[0]['aminoacid'] == 'A T G G C T A G C T A A'
+    assert items[1]['aminoacid'] == 'A T G C G T'
+
+
+def test_dataset_codon_translation() -> None:
+    """Test that the FastaDataset handles amino acid space correctly."""
+    # Nucleotide sequences to be translated
+    sequences = ['ATGGCTAGCTAA', 'ATGCGT']
+
+    # Create the dataset requesting amino acids
+    dataset = FastaDataset(
+        sequences=sequences,
+        return_codon=False,
+        return_aminoacid=True,  # Request amino acids in the getitem
+        contains_nucleotide=True,  # Indicate sequences are nucleotide
+    )
+
+    # Get all items in the dataset
+    items = [dataset[i] for i in range(len(dataset))]
+
+    # Check that amino acids are space-separated
+    assert items[0]['aminoacid'] == 'M A S'
+    assert items[1]['aminoacid'] == 'M R'
