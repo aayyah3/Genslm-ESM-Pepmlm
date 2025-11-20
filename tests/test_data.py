@@ -196,7 +196,7 @@ def test_dataset_codon_translation() -> None:
     # Create the dataset requesting amino acids
     dataset = FastaDataset(
         sequences=sequences,
-        return_codon=False,
+        return_codon=True,  # Request codons in the getitem
         return_aminoacid=True,  # Request amino acids in the getitem
         contains_nucleotide=True,  # Indicate sequences are nucleotide
     )
@@ -207,3 +207,6 @@ def test_dataset_codon_translation() -> None:
     # Check that amino acids are space-separated
     assert items[0]['aminoacid'] == 'M A S'
     assert items[1]['aminoacid'] == 'M R'
+    # Check that codons are space-separated
+    assert items[0]['codon'] == 'ATG GCT AGC TAA'
+    assert items[1]['codon'] == 'ATG CGT'
