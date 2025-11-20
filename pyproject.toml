@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "genslm_esm"
-version = "2025.11.19"
+version = "2025.11.19.post1"
 authors = [
     {name = "Alexander Brace"},
     {name = "Kyle Hippe"},
